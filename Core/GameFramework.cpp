@@ -1503,7 +1503,7 @@ void GameFramework::BuildShadersAndInputLayout()
     mShaders["standardVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", nullptr, "VS", "vs_5_1");
     mShaders["skinnedVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "VS", "vs_5_1");
     mShaders["opaquePS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", nullptr, "PS", "ps_5_1");
-    mShaders["skinnedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "PS", "ps_5_1");
+    mShaders["skinnedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "PS_Simple", "ps_5_1");
 
     mShaders["shadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", nullptr, "VS", "vs_5_1");
     mShaders["skinnedShadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", skinnedDefines, "VS", "vs_5_1");
@@ -1704,7 +1704,7 @@ void GameFramework::LoadSkinnedModel()
         skinnedSubsets, mSkinnedAnimationSets);
 
     mSkinnedModelAnimationController = std::make_unique<AnimationController>(&mSkinnedAnimationSets);
-    std::string clipName = std::string("Skeleton|Take_001");
+    std::string clipName = std::string("Skeleton|OneHand_Base_Attack_E_2.001");
     mSkinnedModelAnimationController->SetAnimation(clipName);
 
     std::vector<std::uint16_t> indices;
@@ -2195,7 +2195,7 @@ void GameFramework::BuildRenderItems()
     // Reflect to change coordinate system from the RHS the data was exported out as.
     XMMATRIX modelScale = XMMatrixScaling(0.03f, 0.03f, 0.03f);
     XMMATRIX modelRot = XMMatrixRotationY(MathHelper::Pi);
-    XMMATRIX modelOffset = XMMatrixTranslation(0.0f, 0.0f, -5.0f);
+    XMMATRIX modelOffset = XMMatrixTranslation(0.0f, 0.5f, 0.0f);
     XMStoreFloat4x4(&ritem->World, modelScale * modelRot * modelOffset);
 
     ritem->TexTransform = MathHelper::Identity4x4();
