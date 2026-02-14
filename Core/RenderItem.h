@@ -11,7 +11,6 @@ using namespace DirectX;
 struct DrawItem
 {
     Material* Mat = nullptr;
-    Texture* Texture = nullptr;
     MeshGeometry* Geo;
 
     // Primitive topology.
