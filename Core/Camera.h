@@ -12,12 +12,17 @@
 #define CAMERA_H
 
 #include "d3dUtil.h"
+#include "component.h"
 
-class Camera
+class Camera : public Component
 {
 public:
 
-	Camera();
+	Camera(Handle<GameObject> owner);
+	Camera(const Camera&) = delete;
+	Camera& operator=(const Camera&) = delete;
+	Camera(Camera&&) = default;
+	Camera& operator=(Camera&&) = default;
 	~Camera();
 
 	// Get/Set world camera position.

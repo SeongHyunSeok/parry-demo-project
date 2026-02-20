@@ -6,7 +6,7 @@
 #endif
 
 #include "d3dUtil.h"
-#include "GameTimer.h"
+#include "timer.h"
 #include "ShadowMap.h"
 #include "Camera.h"
 #include "SSAO.h"
@@ -67,8 +67,8 @@ public:
 protected:
     virtual void CreateRtvAndDsvDescriptorHeaps();
     virtual void OnResize();
-    virtual void Update(const GameTimer& gt);
-    virtual void Draw(const GameTimer& gt);
+    virtual void Update(float dt);
+    virtual void Draw(float dt);
 
     // Convenience overrides for handling mouse input.
     virtual void OnMouseDown(WPARAM btnState, int x, int y);
@@ -95,15 +95,15 @@ protected:
     void LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format);
 
 private:
-    void OnKeyboardInput(const GameTimer& gt);
-    void AnimateMaterials(const GameTimer& gt);
-    void UpdateObjectCBs(const GameTimer& gt);
-    void UpdateSkinnedCBs(const GameTimer& gt);
-    void UpdateMaterialBuffer(const GameTimer& gt);
-    void UpdateShadowTransform(const GameTimer& gt);
-    void UpdateMainPassCB(const GameTimer& gt);
-    void UpdateShadowPassCB(const GameTimer& gt);
-    void UpdateSsaoCB(const GameTimer& gt);
+    void OnKeyboardInput(float dt);
+    void AnimateMaterials(float dt);
+    void UpdateObjectCBs(float dt);
+    void UpdateSkinnedCBs(float dt);
+    void UpdateMaterialBuffer(float dt);
+    void UpdateShadowTransform(float dt);
+    void UpdateMainPassCB(float dt);
+    void UpdateShadowPassCB(float dt);
+    void UpdateSsaoCB(float dt);
 
     void LoadTextures();
     void BuildRootSignature();
@@ -143,8 +143,7 @@ protected:
     bool      m4xMsaaState = false;    // 4X MSAA enabled
     UINT      m4xMsaaQuality = 0;      // quality level of 4X MSAA
 
-    // Used to keep track of the �delta-time� and game time (�4.4).
-    GameTimer mTimer;
+    TimerView mTimerView{ GLOBAL_TIMER };
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain1> mSwapChain;
@@ -225,8 +224,6 @@ private:
     AnimationSets mSkinnedAnimationSets;
     std::vector<std::string> mSkinnedTextureNames;
     std::vector<MaterialInfo> mSkinnedMats;
-
-    Camera mCamera;
 
     std::unique_ptr<ShadowMap> mShadowMap;
 

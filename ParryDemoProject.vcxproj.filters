@@ -72,6 +72,15 @@
     <ClCompile Include="Core\FileUtility.cpp">
       <Filter>Core</Filter>
     </ClCompile>
+    <ClCompile Include="Core\game_object.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\physics.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\timer.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Camera.h">
@@ -135,6 +144,33 @@
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="Core\Vertex.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\component.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\event.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\game_object.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\id.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\id_manager.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\physics.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\timer.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\utils.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\world.h">
       <Filter>Core</Filter>
     </ClInclude>
   </ItemGroup>

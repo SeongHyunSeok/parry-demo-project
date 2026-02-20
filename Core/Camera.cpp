@@ -6,7 +6,7 @@
 
 using namespace DirectX;
 
-Camera::Camera()
+Camera::Camera(Handle<GameObject> owner): Component{owner}
 {
 	SetLens(0.25f * MathHelper::Pi, 1.0f, 1.0f, 1000.0f);
 }

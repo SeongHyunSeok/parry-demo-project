@@ -70,6 +70,10 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>$(SolutionDir)JoltPhysics;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)JoltPhysics\Build\VS2026_CL\$(Configuration);$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -102,13 +106,15 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;JPH_DEBUG_RENDERER;JPH_PROFILE_ENABLED;JPH_OBJECT_STREAM;JPH_USE_AVX2;JPH_USE_AVX;JPH_USE_SSE4_1;JPH_USE_SSE4_2;JPH_USE_LZCNT;JPH_USE_TZCNT;JPH_USE_F16C;JPH_USE_FMADD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Jolt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -134,9 +140,12 @@
     <ClCompile Include="Core\FrameResource.cpp" />
     <ClCompile Include="Core\GameFramework.cpp" />
     <ClCompile Include="Core\GameTimer.cpp" />
+    <ClCompile Include="Core\game_object.cpp" />
     <ClCompile Include="Core\MathHelper.cpp" />
+    <ClCompile Include="Core\physics.cpp" />
     <ClCompile Include="Core\ShadowMap.cpp" />
     <ClCompile Include="Core\SSAO.cpp" />
+    <ClCompile Include="Core\timer.cpp" />
     <ClCompile Include="Demo.cpp" />
     <ClCompile Include="Model\Animation.cpp" />
     <ClCompile Include="Model\GeometryGenerator.cpp" />
@@ -144,23 +153,32 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Camera.h" />
+    <ClInclude Include="Core\component.h" />
     <ClInclude Include="Core\d3dUtil.h" />
     <ClInclude Include="Core\d3dx12.h" />
     <ClInclude Include="Core\DDSTextureLoader.h" />
+    <ClInclude Include="Core\event.h" />
     <ClInclude Include="Core\FileUtility.h" />
     <ClInclude Include="Core\FrameResource.h" />
     <ClInclude Include="Core\GameFramework.h" />
     <ClInclude Include="Core\GameTimer.h" />
+    <ClInclude Include="Core\game_object.h" />
+    <ClInclude Include="Core\id.h" />
+    <ClInclude Include="Core\id_manager.h" />
     <ClInclude Include="Core\Light.h" />
     <ClInclude Include="Core\Material.h" />
     <ClInclude Include="Core\MeshGeometry.h" />
     <ClInclude Include="Core\MathHelper.h" />
+    <ClInclude Include="Core\physics.h" />
     <ClInclude Include="Core\RenderItem.h" />
     <ClInclude Include="Core\ShadowMap.h" />
     <ClInclude Include="Core\SSAO.h" />
     <ClInclude Include="Core\Texture.h" />
+    <ClInclude Include="Core\timer.h" />
     <ClInclude Include="Core\UploadBuffer.h" />
+    <ClInclude Include="Core\utils.h" />
     <ClInclude Include="Core\Vertex.h" />
+    <ClInclude Include="Core\world.h" />
     <ClInclude Include="Model\Animation.h" />
     <ClInclude Include="Model\GeometryGenerator.h" />
     <ClInclude Include="Model\ModelLoader.h" />

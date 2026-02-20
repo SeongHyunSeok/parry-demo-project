@@ -1,9 +1,19 @@
+#define WORLD_MAIN
+
 #include "GameFramework.h"
+#include "physics.h"
+#include "world.h"
 #include <WindowsX.h>
 
 using Microsoft::WRL::ComPtr;
 using namespace std;
 using namespace DirectX;
+
+static Camera& GetMainCamera() {
+    auto& cameras = WORLD.GetComponents<Camera>();
+    assert(!cameras.empty());
+    return cameras[0];
+}
 
 GameFramework* GameFramework::mApp = nullptr;
 GameFramework* GameFramework::GetApp()
@@ -67,7 +77,7 @@ int GameFramework::Run()
 {
 	MSG msg = { 0 };
 
-	mTimer.Reset();
+    CPUClockPoint start = GLOBAL_TIMER.Now();
 
 	while (msg.message != WM_QUIT)
 	{
@@ -80,13 +90,16 @@ int GameFramework::Run()
 		// Otherwise, do animation/game stuff.
 		else
 		{
-			mTimer.Tick();
-
 			if (!mAppPaused)
 			{
+                float dt = mTimerView.GetElapsed<std::chrono::milliseconds>()->count() / 1000.f;
 				CalculateFrameStats();
-				Update(mTimer);
-				Draw(mTimer);
+				Update(dt);
+				Draw(dt);
+
+                auto now = GLOBAL_TIMER.Now();
+                GLOBAL_TIMER.RecordElapsed(start, now);
+                start = now;
 			}
 			else
 			{
@@ -109,8 +122,10 @@ void GameFramework::CalculateFrameStats()
 
 	frameCnt++;
 
+    timeElapsed += GLOBAL_TIMER.GetElapsed<std::chrono::duration<float>>()->count();
+
 	// Compute averages over one second period.
-	if ((mTimer.TotalTime() - timeElapsed) >= 1.0f)
+	if (timeElapsed >= 1.0f)
 	{
 		float fps = (float)frameCnt; // fps = frameCnt / 1
 		float mspf = 1000.0f / fps;
@@ -126,7 +141,7 @@ void GameFramework::CalculateFrameStats()
 
 		// Reset for next average.
 		frameCnt = 0;
-		timeElapsed += 1.0f;
+		timeElapsed = 0.0f;
 	}
 }
 
@@ -138,13 +153,21 @@ bool GameFramework::Initialize()
 	if (!InitDirect3D())
 		return false;
 
+
+    // Initialization
+    auto initTimePoint = GLOBAL_TIMER.Now();
+    physics::InitPhysics();
+    auto hCameraObj = WORLD.AddObject();
+    Camera comCamera{ hCameraObj };
+    comCamera.SetPosition(0.0f, 2.0f, -15.0f);
+    WORLD.AttachComponent(hCameraObj, std::move(comCamera));
+
 	// Do the initial resize code.
 	OnResize();
 
 	// Reset the command list to prep for initialization commands.
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	mCamera.SetPosition(0.0f, 2.0f, -15.0f);
 
 	mShadowMap = std::make_unique<ShadowMap>(md3dDevice.Get(),
 		2048, 2048);
@@ -175,6 +198,8 @@ bool GameFramework::Initialize()
 
 	// Wait until initialization is complete.
 	FlushCommandQueue();
+
+    GLOBAL_TIMER.RecordElapsed(initTimePoint, GLOBAL_TIMER.Now());
 
 	return true;
 }
@@ -238,12 +263,12 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		if (LOWORD(wParam) == WA_INACTIVE)
 		{
 			mAppPaused = true;
-			mTimer.Stop();
+            mTimerView.SetTimeMultiplier(0.0);
 		}
 		else
 		{
 			mAppPaused = false;
-			mTimer.Start();
+			mTimerView.SetTimeMultiplier(1.0);
 		}
 		return 0;
 
@@ -308,7 +333,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	case WM_ENTERSIZEMOVE:
 		mAppPaused = true;
 		mResizing = true;
-		mTimer.Stop();
+        mTimerView.SetTimeMultiplier(0.0);
 		return 0;
 
 		// WM_EXITSIZEMOVE is sent when the user releases the resize bars.
@@ -316,7 +341,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	case WM_EXITSIZEMOVE:
 		mAppPaused = false;
 		mResizing = false;
-		mTimer.Start();
+        mTimerView.SetTimeMultiplier(1.0);
 		OnResize();
 		return 0;
 
@@ -711,7 +736,8 @@ void GameFramework::OnResize()
 
 	///////////
 
-	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
+    auto& camera = GetMainCamera();
+	camera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 
 	if (mSsao != nullptr)
 	{
@@ -743,9 +769,9 @@ void GameFramework::CreateRtvAndDsvDescriptorHeaps()
 		&dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
 }
 
-void GameFramework::Update(const GameTimer& gt)
+void GameFramework::Update(float dt)
 {
-	OnKeyboardInput(gt);
+	OnKeyboardInput(dt);
 
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
@@ -765,7 +791,7 @@ void GameFramework::Update(const GameTimer& gt)
 	// Animate the lights (and hence shadows).
 	//
 
-	mLightRotationAngle += 0.1f * gt.DeltaTime();
+	mLightRotationAngle += 0.1f * dt;
 
 	XMMATRIX R = XMMatrixRotationY(mLightRotationAngle);
 	for (int i = 0; i < 3; ++i)
@@ -775,17 +801,17 @@ void GameFramework::Update(const GameTimer& gt)
 		XMStoreFloat3(&mRotatedLightDirections[i], lightDir);
 	}
 
-	AnimateMaterials(gt);
-	UpdateObjectCBs(gt);
-	UpdateSkinnedCBs(gt);
-	UpdateMaterialBuffer(gt);
-	UpdateShadowTransform(gt);
-	UpdateMainPassCB(gt);
-	UpdateShadowPassCB(gt);
-	UpdateSsaoCB(gt);
+	AnimateMaterials(dt);
+	UpdateObjectCBs(dt);
+	UpdateSkinnedCBs(dt);
+	UpdateMaterialBuffer(dt);
+	UpdateShadowTransform(dt);
+	UpdateMainPassCB(dt);
+	UpdateShadowPassCB(dt);
+	UpdateSsaoCB(dt);
 }
 
-void GameFramework::Draw(const GameTimer& gt)
+void GameFramework::Draw(float dt)
 {
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 
@@ -936,43 +962,44 @@ void GameFramework::OnMouseMove(WPARAM btnState, int x, int y)
 {
     if ((btnState & MK_LBUTTON) != 0)
     {
+        auto& camera = GetMainCamera();
         // Make each pixel correspond to a quarter of a degree.
         float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
         float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
 
-        mCamera.Pitch(dy);
-        mCamera.RotateY(dx);
+        camera.Pitch(dy);
+        camera.RotateY(dx);
     }
 
     mLastMousePos.x = x;
     mLastMousePos.y = y;
 }
 
-void GameFramework::OnKeyboardInput(const GameTimer& gt)
+void GameFramework::OnKeyboardInput(float dt)
 {
-    const float dt = gt.DeltaTime();
+    auto& camera = GetMainCamera();
 
     if (GetAsyncKeyState('W') & 0x8000)
-        mCamera.Walk(10.0f * dt);
+        camera.Walk(10.0f * dt);
 
     if (GetAsyncKeyState('S') & 0x8000)
-        mCamera.Walk(-10.0f * dt);
+        camera.Walk(-10.0f * dt);
 
     if (GetAsyncKeyState('A') & 0x8000)
-        mCamera.Strafe(-10.0f * dt);
+        camera.Strafe(-10.0f * dt);
 
     if (GetAsyncKeyState('D') & 0x8000)
-        mCamera.Strafe(10.0f * dt);
+        camera.Strafe(10.0f * dt);
 
-    mCamera.UpdateViewMatrix();
+    camera.UpdateViewMatrix();
 }
 
-void GameFramework::AnimateMaterials(const GameTimer& gt)
+void GameFramework::AnimateMaterials(float dt)
 {
 
 }
 
-void GameFramework::UpdateObjectCBs(const GameTimer& gt)
+void GameFramework::UpdateObjectCBs(float dt)
 {
     auto currObjectCB = mCurrFrameResource->ObjectCB.get();
     for (auto& e : mAllRitems)
@@ -999,12 +1026,12 @@ void GameFramework::UpdateObjectCBs(const GameTimer& gt)
     }
 }
 
-void GameFramework::UpdateSkinnedCBs(const GameTimer& gt)
+void GameFramework::UpdateSkinnedCBs(float dt)
 {
     auto currSkinnedCB = mCurrFrameResource->SkinnedCB.get();
 
     // We only have one skinned model being animated.
-    mSkinnedModelAnimationController->AdvanceTime(gt.DeltaTime());
+    mSkinnedModelAnimationController->AdvanceTime(dt);
 
     SkinnedConstants skinnedConstants;
     std::copy(
@@ -1015,7 +1042,7 @@ void GameFramework::UpdateSkinnedCBs(const GameTimer& gt)
     currSkinnedCB->CopyData(0, skinnedConstants);
 }
 
-void GameFramework::UpdateMaterialBuffer(const GameTimer& gt)
+void GameFramework::UpdateMaterialBuffer(float dt)
 {
     auto currMaterialBuffer = mCurrFrameResource->MaterialBuffer.get();
     for (auto& e : mMaterials)
@@ -1043,7 +1070,7 @@ void GameFramework::UpdateMaterialBuffer(const GameTimer& gt)
     }
 }
 
-void GameFramework::UpdateShadowTransform(const GameTimer& gt)
+void GameFramework::UpdateShadowTransform(float dt)
 {
     // Only the first "main" light casts a shadow.
     XMVECTOR lightDir = XMLoadFloat3(&mRotatedLightDirections[0]);
@@ -1083,10 +1110,11 @@ void GameFramework::UpdateShadowTransform(const GameTimer& gt)
     XMStoreFloat4x4(&mShadowTransform, S);
 }
 
-void GameFramework::UpdateMainPassCB(const GameTimer& gt)
+void GameFramework::UpdateMainPassCB(float dt)
 {
-    XMMATRIX view = mCamera.GetView();
-    XMMATRIX proj = mCamera.GetProj();
+    auto& camera = GetMainCamera();
+    XMMATRIX view = camera.GetView();
+    XMMATRIX proj = camera.GetProj();
 
     XMMATRIX viewProj = XMMatrixMultiply(view, proj);
     auto viewVec = XMMatrixDeterminant(view);
@@ -1114,13 +1142,12 @@ void GameFramework::UpdateMainPassCB(const GameTimer& gt)
     XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
     XMStoreFloat4x4(&mMainPassCB.ViewProjTex, XMMatrixTranspose(viewProjTex));
     XMStoreFloat4x4(&mMainPassCB.ShadowTransform, XMMatrixTranspose(shadowTransform));
-    mMainPassCB.EyePosW = mCamera.GetPosition3f();
+    mMainPassCB.EyePosW = camera.GetPosition3f();
     mMainPassCB.RenderTargetSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
     mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mClientWidth, 1.0f / mClientHeight);
     mMainPassCB.NearZ = 1.0f;
     mMainPassCB.FarZ = 1000.0f;
-    mMainPassCB.TotalTime = gt.TotalTime();
-    mMainPassCB.DeltaTime = gt.DeltaTime();
+    mMainPassCB.DeltaTime = dt;
     mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
     mMainPassCB.Lights[0].Direction = mRotatedLightDirections[0];
     mMainPassCB.Lights[0].Strength = { 0.9f, 0.9f, 0.7f };
@@ -1133,7 +1160,7 @@ void GameFramework::UpdateMainPassCB(const GameTimer& gt)
     currPassCB->CopyData(0, mMainPassCB);
 }
 
-void GameFramework::UpdateShadowPassCB(const GameTimer& gt)
+void GameFramework::UpdateShadowPassCB(float dt)
 {
     XMMATRIX view = XMLoadFloat4x4(&mLightView);
     XMMATRIX proj = XMLoadFloat4x4(&mLightProj);
@@ -1165,11 +1192,12 @@ void GameFramework::UpdateShadowPassCB(const GameTimer& gt)
     currPassCB->CopyData(1, mShadowPassCB);
 }
 
-void GameFramework::UpdateSsaoCB(const GameTimer& gt)
+void GameFramework::UpdateSsaoCB(float dt)
 {
     SsaoConstants ssaoCB;
 
-    XMMATRIX P = mCamera.GetProj();
+    auto& camera = GetMainCamera();
+    XMMATRIX P = camera.GetProj();
 
     // Transform NDC space [-1,+1]^2 to texture space [0,1]^2
     XMMATRIX T(
