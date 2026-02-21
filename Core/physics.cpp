@@ -35,8 +35,8 @@ namespace physics {
 			ContactSettings& ioSettings) override {
 			auto& meta1 = *reinterpret_cast<BodyMetadata*>(inBody1.GetUserData());
 			auto& meta2 = *reinterpret_cast<BodyMetadata*>(inBody2.GetUserData());
-			auto pObject1 = WORLD.GetObject(meta1.owner);
-			auto pObject2 = WORLD.GetObject(meta2.owner);
+			auto pObject1 = WORLD.GetGameObject(meta1.owner);
+			auto pObject2 = WORLD.GetGameObject(meta2.owner);
 			assert(pObject1);
 			assert(pObject2);
 			Event ev1{ CollidedWith{meta2.owner} };
@@ -60,8 +60,8 @@ namespace physics {
 				*reinterpret_cast<BodyMetadata*>(interface.GetUserData(idBody1));
 			auto& meta2 =
 				*reinterpret_cast<BodyMetadata*>(interface.GetUserData(idBody2));
-			auto pObject1 = WORLD.GetObject(meta1.owner);
-			auto pObject2 = WORLD.GetObject(meta2.owner);
+			auto pObject1 = WORLD.GetGameObject(meta1.owner);
+			auto pObject2 = WORLD.GetGameObject(meta2.owner);
 			assert(pObject1);
 			assert(pObject2);
 			Event ev1{ DetachedWith{meta2.owner} };

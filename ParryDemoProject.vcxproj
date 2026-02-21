@@ -154,6 +154,9 @@
   <ItemGroup>
     <ClInclude Include="Core\Camera.h" />
     <ClInclude Include="Core\component.h" />
+    <ClInclude Include="Core\Components\Animation.h" />
+    <ClInclude Include="Core\Components\Mesh.h" />
+    <ClInclude Include="Core\Components\Sky.h" />
     <ClInclude Include="Core\d3dUtil.h" />
     <ClInclude Include="Core\d3dx12.h" />
     <ClInclude Include="Core\DDSTextureLoader.h" />
@@ -170,7 +173,6 @@
     <ClInclude Include="Core\MeshGeometry.h" />
     <ClInclude Include="Core\MathHelper.h" />
     <ClInclude Include="Core\physics.h" />
-    <ClInclude Include="Core\RenderItem.h" />
     <ClInclude Include="Core\ShadowMap.h" />
     <ClInclude Include="Core\SSAO.h" />
     <ClInclude Include="Core\Texture.h" />

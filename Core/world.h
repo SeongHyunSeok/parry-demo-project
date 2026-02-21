@@ -32,10 +32,10 @@ private:
 	}
 
 public:
-	inline GameObject* GetObject(Handle<GameObject> handle) {
+	inline GameObject* GetGameObject(Handle<GameObject> handle) {
 		return gameObjects.Get(handle);
 	}
-	inline const GameObject* GetObject(Handle<GameObject> handle) const {
+	inline const GameObject* GetGameObject(Handle<GameObject> handle) const {
 		return gameObjects.Get(handle);
 	}
 	inline Handle<GameObject> AddObject() {
@@ -49,7 +49,7 @@ public:
 	std::optional<Handle<Component>>
 		AttachComponent(Handle<GameObject> object, T&& component) {
 		using raw_t = std::remove_cvref_t<T>;
-		auto obj = GetObject(object);
+		auto obj = GetGameObject(object);
 		if (!obj) {
 			return {};
 		}
@@ -65,7 +65,7 @@ public:
 	std::optional<T> DetachComponent(Handle<GameObject> object) {
 		using raw_t = std::remove_cvref_t<T>;
 
-		auto obj = GetObject(object);
+		auto obj = GetGameObject(object);
 		if (!obj) {
 			return {};
 		}
@@ -91,7 +91,7 @@ public:
 	template <typename T>
 		requires std::derived_from<std::remove_cvref_t<T>, Component>
 	inline std::remove_cvref_t<T>* GetComponent(Handle<GameObject> objHandle) {
-		auto pObj = GetObject(objHandle);
+		auto pObj = GetGameObject(objHandle);
 		if (!pObj) {
 			return nullptr;
 		}

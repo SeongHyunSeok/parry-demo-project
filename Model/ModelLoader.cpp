@@ -63,7 +63,7 @@ bool FbxBinLoader::LoadFbxBin(
 	std::vector<SkinnedVertex>& skinnedVertices,
 	std::vector<UINT>& indices,
 	std::vector<SubMeshInfo>& subsets,
-	AnimationSets& animationsSets
+	AnimationSets* animationsSets
 ) {
 	FILE* file = NULL;
 	::fopen_s(&file, filename.data(), "rb");
@@ -111,7 +111,7 @@ bool FbxBinLoader::LoadFbxBin(
 			break;
 		}
 	}
-	animationsSets.boneOffsets = move(boneOffsets);
+	animationsSets->boneOffsets = move(boneOffsets);
 
 	::fclose(file);
 
@@ -421,7 +421,7 @@ void FbxBinLoader::LoadAnimationFromFile(
 	FILE* file,
 	std::unordered_map<std::string, FrameData>& frames,
 	std::vector<std::string>&& boneNames,
-	AnimationSets& animationsSets
+	AnimationSets* animationsSets
 ) {
 	char pstrToken[64] = { '\0' };
 	UINT nReads = 0;
@@ -429,16 +429,16 @@ void FbxBinLoader::LoadAnimationFromFile(
 	int animationSetCount = 0;
 
 	// create bone hierarchy
-	animationsSets.boneHierarchy.clear();
-	animationsSets.boneHierarchy.resize(boneNames.size());
+	animationsSets->boneHierarchy.clear();
+	animationsSets->boneHierarchy.resize(boneNames.size());
 
 	std::unordered_map<std::string, int> boneNameToIdx;
 	boneNameToIdx.emplace(move(boneNames[0]), 0);
-	animationsSets.boneHierarchy[0] = 0;
+	animationsSets->boneHierarchy[0] = 0;
 	for (int i = 1; i < boneNames.size(); ++i) {
 		const FrameData& frame = frames[boneNames[i]];
 		boneNameToIdx.emplace(move(boneNames[i]), i);
-		animationsSets.boneHierarchy[i] = boneNameToIdx[frame.parentFrameName];
+		animationsSets->boneHierarchy[i] = boneNameToIdx[frame.parentFrameName];
 	}
 	boneNames.clear();
 
@@ -463,13 +463,13 @@ void FbxBinLoader::LoadAnimationFromFile(
 				std::forward_as_tuple(6),
 				std::forward_as_tuple(9, 'g'));
 			auto token = std::string(pstrToken);
-			animationsSets.animationSets.emplace(
+			animationsSets->animationSets.emplace(
 				std::piecewise_construct,
 				std::forward_as_tuple(pstrToken),
 				std::forward_as_tuple(startTime, endTime, token)
 			);
 
-			AnimationSet& newAnimationSet = animationsSets.animationSets[std::string(pstrToken)];
+			AnimationSet& newAnimationSet = animationsSets->animationSets[std::string(pstrToken)];
 
 			FileUtility::ReadStringFromFile(file, pstrToken);
 			if (!strcmp(pstrToken, "<AnimationLayers>:"))
@@ -559,12 +559,12 @@ void FbxBinLoader::LoadAnimationKeyValues(
 	::fread(animationCurve[curveTypeIndex].keyValues.data(), sizeof(float), nAnimationKeys, file);
 }
 
-void FbxBinLoader::PrintBoneHierarcyInfo(const AnimationSets& animationsSets)
+void FbxBinLoader::PrintBoneHierarcyInfo(const AnimationSets const* animationsSets)
 {
 	TCHAR pstrDebug[256] = { 0 };
 
 	int i = 0;
-	for (const int it : animationsSets.boneHierarchy) {
+	for (const int it : animationsSets->boneHierarchy) {
 		_stprintf_s(pstrDebug, 256, _T("(Frame: %d) (Parent: %d)\n"), i++, it);
 		OutputDebugString(pstrDebug);
 	}

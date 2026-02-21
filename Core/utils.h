@@ -24,13 +24,17 @@ public:
 	Handle& operator=(Handle&&) = default;
 
 	bool operator<(const Handle& other) const {
-		return (idx < other.idx) || (real_id < other.real_id);
+		if (idx < other.idx) return true;
+		if (idx == other.idx && real_id < other.real_id) return true;
+		return false;
 	};
 	bool operator>(const Handle& other) const {
-		return (idx > other.idx) || (real_id > other.real_id);
+		if (idx > other.idx) return true;
+		if (idx == other.idx && real_id > other.real_id) return true;
+		return false;
 	};
 	bool operator==(const Handle& other) const {
-		return (idx == other.idx) || (real_id == other.real_id);
+		return (idx == other.idx) && (real_id == other.real_id);
 	};
 
 	//template<typename U, typename H>

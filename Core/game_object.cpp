@@ -3,7 +3,7 @@
 #include "world.h"
 
 bool GameObject::AddChild(GameWorld &world, Handle<GameObject> hChild) {
-  auto childOpt = world.GetObject(hChild);
+  auto childOpt = world.GetGameObject(hChild);
   if (!childOpt) {
     return false;
   }
@@ -20,7 +20,7 @@ bool GameObject::RemoveChild(GameWorld &world, Handle<GameObject> hChild) {
   }
   children.erase(it);
 
-  auto childOpt = world.GetObject(hChild);
+  auto childOpt = world.GetGameObject(hChild);
   if (!childOpt) {
     return false;
   }
@@ -43,7 +43,7 @@ void GameObject::HandleEvent(Event &event) {
 
   if (propagation == EventPropagation::PROPAGATE) {
     for (auto &hChild : children) {
-      auto child = WORLD.GetObject(hChild);
+      auto child = WORLD.GetGameObject(hChild);
       if (!child) {
         continue;
       }

@@ -10,12 +10,14 @@
 #include "ShadowMap.h"
 #include "Camera.h"
 #include "SSAO.h"
-#include "RenderItem.h"
 #include "MeshGeometry.h"
 #include "Material.h"
 #include "Texture.h"
 #include "Light.h"
 #include "Vertex.h"
+#include "Components/Mesh.h"
+#include "Components/Animation.h"
+#include "Components/Sky.h"
 #include "../Model/GeometryGenerator.h"
 #include "../Model/Animation.h"
 #include "../Model/ModelLoader.h"
@@ -29,15 +31,6 @@ using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
 using namespace Microsoft::WRL;
-
-enum class RenderLayer : int
-{
-    Opaque = 0,
-    SkinnedOpaque,
-    Debug,
-    Sky,
-    Count
-};
 
 class GameFramework
 {
@@ -116,7 +109,9 @@ private:
     void BuildFrameResources();
     void BuildMaterials();
     void BuildRenderItems();
-    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderObject*>& ritems);
+    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<NonAnimatedComponent>& ritems);
+    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems);
+    void DrawRenderItem(ID3D12GraphicsCommandList* cmdList, const MeshComponent const * ritem);
     void DrawSceneToShadowMap();
     void DrawNormalsAndDepth();
 
@@ -126,7 +121,6 @@ private:
     CD3DX12_CPU_DESCRIPTOR_HANDLE GetRtv(int index)const;
 
     std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> GetStaticSamplers();
-
 protected:
 
     static GameFramework* mApp;
@@ -138,12 +132,14 @@ protected:
     bool      mMaximized = false;  // is the application maximized?
     bool      mResizing = false;   // are the resize bars being dragged?
     bool      mFullscreenState = false;// fullscreen enabled
+    
+
+
+    TimerView mTimerView{ GLOBAL_TIMER };
 
     // Set true to use 4X MSAA (�4.1.8).  The default is false.
     bool      m4xMsaaState = false;    // 4X MSAA enabled
     UINT      m4xMsaaQuality = 0;      // quality level of 4X MSAA
-
-    TimerView mTimerView{ GLOBAL_TIMER };
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain1> mSwapChain;
@@ -171,6 +167,9 @@ protected:
     UINT mDsvDescriptorSize = 0;
     UINT mCbvSrvUavDescriptorSize = 0;
 
+    UINT skinnedCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(SkinnedConstants));
+    UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+
     // Derived class should set these in derived constructor to customize starting values.
     std::wstring mMainWndCaption = L"d3d App";
     D3D_DRIVER_TYPE md3dDriverType = D3D_DRIVER_TYPE_HARDWARE;
@@ -194,20 +193,10 @@ private:
     std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
     std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
     std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
+    std::unordered_map <std::string, std::unique_ptr<AnimationSets>> mSkinnedAnimationSets;
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
     std::vector<D3D12_INPUT_ELEMENT_DESC> mSkinnedInputLayout;
-
-    // List of all the render items.
-    std::vector<std::unique_ptr<RenderObject>> mAllRitems;
-
-    // Render items divided by PSO.
-    std::vector<RenderObject*> mRitemLayer[(int)RenderLayer::Count];
-
-    UINT mSkyTexHeapIndex = 0;
-    UINT mShadowMapHeapIndex = 0;
-    UINT mSsaoHeapIndexStart = 0;
-    UINT mSsaoAmbientMapIndex = 0;
 
     UINT mNullCubeSrvIndex = 0;
     UINT mNullTexSrvIndex1 = 0;
@@ -216,28 +205,32 @@ private:
     CD3DX12_GPU_DESCRIPTOR_HANDLE mNullSrv;
 
     PassConstants mMainPassCB;  // index 0 of pass cbuffer.
-    PassConstants mShadowPassCB;// index 1 of pass cbuffer.
+
+
 
     UINT mSkinnedSrvHeapStart = 0;
     std::string mSkinnedModelFilename = "Models\\Robot.bin";
-    std::unique_ptr<AnimationController> mSkinnedModelAnimationController;
-    AnimationSets mSkinnedAnimationSets;
     std::vector<std::string> mSkinnedTextureNames;
     std::vector<MaterialInfo> mSkinnedMats;
-
+    
+    // shadow
+    UINT mShadowMapHeapIndex = 0;
     std::unique_ptr<ShadowMap> mShadowMap;
-
+    DirectX::BoundingSphere mSceneBounds;
+    PassConstants mShadowPassCB;// index 1 of pass cbuffer.
+    
+    // ssao
+    UINT mSsaoHeapIndexStart = 0;
+    UINT mSsaoAmbientMapIndex = 0;
     std::unique_ptr<Ssao> mSsao;
 
-    DirectX::BoundingSphere mSceneBounds;
-
+    // light
     float mLightNearZ = 0.0f;
     float mLightFarZ = 0.0f;
     XMFLOAT3 mLightPosW;
     XMFLOAT4X4 mLightView = MathHelper::Identity4x4();
     XMFLOAT4X4 mLightProj = MathHelper::Identity4x4();
     XMFLOAT4X4 mShadowTransform = MathHelper::Identity4x4();
-
     float mLightRotationAngle = 0.0f;
     XMFLOAT3 mBaseLightDirections[3] = {
         XMFLOAT3(0.57735f, -0.57735f, 0.57735f),
@@ -246,5 +239,6 @@ private:
     };
     XMFLOAT3 mRotatedLightDirections[3];
 
+    // input
     POINT mLastMousePos;
 };

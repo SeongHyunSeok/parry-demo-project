@@ -23,7 +23,7 @@ public:
         std::vector<SkinnedVertex>& skinnedVertices,
         std::vector<UINT>& indices,
         std::vector<SubMeshInfo>& subsets,
-        AnimationSets& animationsSets);
+        AnimationSets* animationsSets);
 private:
     struct FrameData
     {
@@ -65,14 +65,14 @@ private:
         FILE* file,
         std::unordered_map<std::string, FrameData>& frames,
         std::vector<std::string>&& boneNames,
-        AnimationSets& animationsSets
+        AnimationSets* animationsSets
     );
     void LoadAnimationKeyValues(
         FILE* file,
         AnimationCurvesPerCurveType& newAnimationCurve,
         AnimationCurveType curveType
     );
-    void PrintBoneHierarcyInfo(const AnimationSets& animationsSets);
+    void PrintBoneHierarcyInfo(const AnimationSets const* animationsSets);
 };
 
 struct MaterialInfo

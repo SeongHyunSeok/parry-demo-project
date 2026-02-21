@@ -28,6 +28,9 @@
     <Filter Include="Resource Files\Textures">
       <UniqueIdentifier>{73c3f25e-be11-4865-8019-49f0a07a088a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core\Components">
+      <UniqueIdentifier>{cf51d9a0-5554-4a47-8d79-c8e3fe2aa11c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Demo.cpp">
@@ -107,9 +110,6 @@
     <ClInclude Include="Core\MathHelper.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Core\RenderItem.h">
-      <Filter>Core</Filter>
-    </ClInclude>
     <ClInclude Include="Core\ShadowMap.h">
       <Filter>Core</Filter>
     </ClInclude>
@@ -172,6 +172,15 @@
     </ClInclude>
     <ClInclude Include="Core\world.h">
       <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Components\Mesh.h">
+      <Filter>Core\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Components\Animation.h">
+      <Filter>Core\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Components\Sky.h">
+      <Filter>Core\Components</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
