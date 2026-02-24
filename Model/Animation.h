@@ -92,6 +92,25 @@ public:
 	float GetClipEndTime()const;
 };
 
+enum class EquipmentTypes : UINT {
+	OneHandSword = 0,
+	Shield,
+	TwoHandSword,
+	Count
+};
+
+struct EquipmentLocation {
+	EquipmentLocation() {}
+	EquipmentLocation(UINT refBoneInedex, DirectX::FXMMATRIX& trans)
+		: referenceBoneIndex{ refBoneInedex }
+	{
+		XMStoreFloat4x4(&localTransform, trans);
+	}
+
+	UINT referenceBoneIndex = -1;
+	DirectX::XMFLOAT4X4 localTransform = MathHelper::Identity4x4();
+};
+
 class AnimationSets
 {
 public:
@@ -101,6 +120,7 @@ public:
 	std::unordered_map<std::string, AnimationSet> animationSets;
 	std::vector<int> boneHierarchy;
 	std::vector<DirectX::XMFLOAT4X4> boneOffsets;
+	std::unordered_map<EquipmentTypes, EquipmentLocation> equipmentLocations;
 public:
 	UINT BoneCount()const;
 
@@ -111,6 +131,7 @@ public:
 	// that you were calling this several times with the same clipName at 
 	// the same timePos.
 	void GetFinalTransforms(const std::string& clipName, float timePos,
+		std::vector<DirectX::XMFLOAT4X4>& toRootTransforms,
 		std::vector<DirectX::XMFLOAT4X4>& finalTransforms)const;
 };
 
@@ -150,6 +171,7 @@ public:
 public:
 	AnimationSets* animationSets = nullptr;
 
+	std::vector<XMFLOAT4X4> toRootTransforms;
 	std::vector<DirectX::XMFLOAT4X4> finalTransforms;
 
 	std::unordered_map<std::string, AnimationTrack> animationTracks;

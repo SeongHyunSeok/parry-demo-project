@@ -15,9 +15,3 @@ struct AnimationComponent : public Component {
     // nullptr if this render-item is not animated by skinned mesh.
     std::unique_ptr<AnimationController> mSkinnedModelAnimationController;
 };
-
-struct NonAnimatedComponent : public Component {
-    NonAnimatedComponent(Handle<GameObject> owner) : Component{ owner } {};
-    NonAnimatedComponent(const NonAnimatedComponent& rhs) = delete;
-    NonAnimatedComponent(NonAnimatedComponent&&) = default;
-};

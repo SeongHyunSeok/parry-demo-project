@@ -46,6 +46,10 @@ VertexOut VS(VertexIn vin)
     vin.PosL = posL;
 #endif
 
+#ifdef EQUIPPED
+    vin.PosL = mul(float4(vin.PosL, 1.0f), gEquippedBoneToRootTransform).xyz;
+#endif
+    
     // Transform to world space.
     float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
 
@@ -64,6 +68,7 @@ VertexOut VS(VertexIn vin)
 // texture can use a NULL pixel shader for depth pass.
 void PS(VertexOut pin) 
 {
+#ifdef ALPHA_TEST
 	// Fetch the material data.
 	MaterialData matData = gMaterialData[gMaterialIndex];
 	float4 diffuseAlbedo = matData.DiffuseAlbedo;
@@ -71,8 +76,7 @@ void PS(VertexOut pin)
 	
 	// Dynamically look up the texture in the array.
 	diffuseAlbedo *= gTextureMaps[diffuseMapIndex].Sample(gsamAnisotropicWrap, pin.TexC);
-
-#ifdef ALPHA_TEST
+    
     // Discard pixel if texture alpha < 0.1.  We do this test as soon 
     // as possible in the shader so that we can potentially exit the
     // shader early, thereby skipping the rest of the shader code.

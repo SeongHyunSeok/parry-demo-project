@@ -95,6 +95,11 @@ cbuffer cbPass : register(b2)
     Light gLights[MaxLights];
 };
 
+cbuffer cbEquippedObject : register(b3)
+{
+    float4x4 gEquippedBoneToRootTransform;
+}
+
 //---------------------------------------------------------------------------------------
 // Transforms a normal map sample to world space.
 //---------------------------------------------------------------------------------------

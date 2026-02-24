@@ -1,6 +1,6 @@
 #include "FrameResource.h"
 
-FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT skinnedObjectCount, UINT materialCount)
+FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT skinnedObjectCount, UINT materialCount, UINT equipmentCount)
 {
     ThrowIfFailed(device->CreateCommandAllocator(
         D3D12_COMMAND_LIST_TYPE_DIRECT,
@@ -11,6 +11,7 @@ FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCo
     MaterialBuffer = std::make_unique<UploadBuffer<MaterialData>>(device, materialCount, false);
     ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
     SkinnedCB = std::make_unique<UploadBuffer<SkinnedConstants>>(device, skinnedObjectCount, true);
+    EquippedObjectCB = std::make_unique<UploadBuffer<EquippedObjectConstants>>(device, equipmentCount, true);
 }
 
 FrameResource::~FrameResource()

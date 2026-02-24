@@ -93,7 +93,7 @@ int GameFramework::Run()
 			if (!mAppPaused)
 			{
                 float dt = mTimerView.GetElapsed<std::chrono::milliseconds>()->count() / 1000.f;
-				CalculateFrameStats();
+                CalculateFrameStats();
 				Update(dt);
 				Draw(dt);
 
@@ -184,6 +184,7 @@ bool GameFramework::Initialize()
 	BuildDescriptorHeaps();
 	BuildShadersAndInputLayout();
 	BuildShapeGeometry();
+    BuildFbxModelGeometry();
 	BuildMaterials();
 	BuildRenderItems();
 	BuildFrameResources();
@@ -912,6 +913,9 @@ void GameFramework::Draw(float dt)
 	mCommandList->SetPipelineState(mPSOs["opaque"].Get());
 	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
 
+    mCommandList->SetPipelineState(mPSOs["equippedOpaque"].Get());
+    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
+
 	mCommandList->SetPipelineState(mPSOs["skinnedOpaque"].Get());
 	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<AnimationComponent>());
 
@@ -1012,6 +1016,7 @@ void GameFramework::UpdateObjectCBs(float dt)
         // This needs to be tracked per frame resource.
         if (e.NumFramesDirty > 0)
         {
+            e.generateWorldTransformMatrix();
             XMMATRIX world = XMLoadFloat4x4(&e.World);
             XMMATRIX texTransform = XMLoadFloat4x4(&e.TexTransform);
 
@@ -1022,6 +1027,24 @@ void GameFramework::UpdateObjectCBs(float dt)
                 objConstants.MaterialIndex = it.Mat->MatCBIndex; // TO DO
             }
             currObjectCB->CopyData(e.ObjCBIndex, objConstants);
+
+            // Next FrameResource need to be updated too.
+            e.NumFramesDirty--;
+        }
+    }
+
+    auto currEquippedObjCB = mCurrFrameResource->EquippedObjectCB.get();
+    for (auto& e : WORLD.GetComponents<EquippedComponent>())
+    {
+        // Only update the cbuffer data if the constants have changed.  
+        // This needs to be tracked per frame resource.
+        if (e.NumFramesDirty > 0)
+        {
+            XMMATRIX equippedBoneToRootTransfrom = XMLoadFloat4x4(&e.equippedBoneToRootTransfrom);
+
+            EquippedObjectConstants equippedObjConstants;
+            XMStoreFloat4x4(&equippedObjConstants.EquippedBoneFinalTransform, XMMatrixTranspose(equippedBoneToRootTransfrom));
+            currEquippedObjCB->CopyData(e.EquippedCBIndex, equippedObjConstants);
 
             // Next FrameResource need to be updated too.
             e.NumFramesDirty--;
@@ -1045,6 +1068,28 @@ void GameFramework::UpdateSkinnedCBs(float dt)
             &skinnedConstants.BoneTransforms[0]);
 
         currSkinnedCB->CopyData(0, skinnedConstants);
+    }
+
+    for (auto& comEquipped : WORLD.GetComponents<EquippedComponent>()) {
+        auto hEquippedObj = comEquipped.GetOwner();
+        auto pEquippedObjMesh = WORLD.GetComponent<MeshComponent>(hEquippedObj);
+        auto pEquipment = WORLD.GetComponent<EquipmentComponent>(hEquippedObj);
+
+        auto pOwnerAnimation = WORLD.GetComponent<AnimationComponent>(comEquipped.owner);
+        auto pOwnerMesh = WORLD.GetComponent<MeshComponent>(comEquipped.owner);
+        if (pOwnerAnimation && pOwnerMesh) {
+            const auto& equipmentLoc = pOwnerAnimation->mSkinnedModelAnimationController->animationSets->equipmentLocations[pEquipment->equipmentType];
+            const auto& equipmentLocalTrans = equipmentLoc.localTransform;
+
+            XMStoreFloat4x4(&comEquipped.equippedBoneToRootTransfrom, XMMatrixMultiply(
+                XMLoadFloat4x4(&equipmentLocalTrans),
+                XMLoadFloat4x4(&pOwnerAnimation->mSkinnedModelAnimationController->toRootTransforms[equipmentLoc.referenceBoneIndex])));
+            comEquipped.NumFramesDirty = gNumFrameResources;
+            pEquippedObjMesh->Scale = pOwnerMesh->Scale;
+            pEquippedObjMesh->Rotation = pOwnerMesh->Rotation;
+            pEquippedObjMesh->Translation = pOwnerMesh->Translation;
+            pEquippedObjMesh->NumFramesDirty = gNumFrameResources;
+        }
     }
 }
 
@@ -1307,7 +1352,7 @@ void GameFramework::BuildRootSignature()
     texTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 48, 3, 0);
 
     // Root parameter can be a table, root descriptor or root constants.
-    CD3DX12_ROOT_PARAMETER slotRootParameter[6];
+    CD3DX12_ROOT_PARAMETER slotRootParameter[7];
 
     // Perfomance TIP: Order from most frequent to least frequent.
     slotRootParameter[0].InitAsConstantBufferView(0);
@@ -1316,11 +1361,12 @@ void GameFramework::BuildRootSignature()
     slotRootParameter[3].InitAsShaderResourceView(0, 1);
     slotRootParameter[4].InitAsDescriptorTable(1, &texTable0, D3D12_SHADER_VISIBILITY_PIXEL);
     slotRootParameter[5].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_PIXEL);
+    slotRootParameter[6].InitAsConstantBufferView(3);
 
     auto staticSamplers = GetStaticSamplers();
 
     // A root signature is an array of root parameters.
-    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(6, slotRootParameter,
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(7, slotRootParameter,
         (UINT)staticSamplers.size(), staticSamplers.data(),
         D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -1538,13 +1584,22 @@ void GameFramework::BuildShadersAndInputLayout()
         NULL, NULL
     };
 
+    const D3D_SHADER_MACRO equippedDefines[] =
+    {
+        "EQUIPPED", "1",
+        NULL, NULL
+    };
+
     mShaders["standardVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", nullptr, "VS", "vs_5_1");
     mShaders["skinnedVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "VS", "vs_5_1");
+    mShaders["equippedVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", equippedDefines, "VS", "vs_5_1");
     mShaders["opaquePS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", nullptr, "PS", "ps_5_1");
     mShaders["skinnedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "PS_Simple", "ps_5_1");
+    mShaders["equippedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", equippedDefines, "PS_Simple", "ps_5_1");
 
     mShaders["shadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", nullptr, "VS", "vs_5_1");
     mShaders["skinnedShadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", skinnedDefines, "VS", "vs_5_1");
+    mShaders["equippedShadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", equippedDefines, "VS", "vs_5_1");
     mShaders["shadowOpaquePS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", nullptr, "PS", "ps_5_1");
     mShaders["shadowAlphaTestedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", alphaTestDefines, "PS", "ps_5_1");
 
@@ -1553,6 +1608,7 @@ void GameFramework::BuildShadersAndInputLayout()
 
     mShaders["drawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", nullptr, "VS", "vs_5_1");
     mShaders["skinnedDrawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", skinnedDefines, "VS", "vs_5_1");
+    mShaders["equippedDrawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", equippedDefines, "VS", "vs_5_1");
     mShaders["drawNormalsPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", nullptr, "PS", "ps_5_1");
 
     mShaders["ssaoVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Ssao.hlsl", nullptr, "VS", "vs_5_1");
@@ -1736,14 +1792,23 @@ void GameFramework::LoadSkinnedModel()
     std::vector<UINT> indices32bit;
     std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
 
-    FbxBinLoader fbxBinLoader;
-
     mSkinnedAnimationSets.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(mSkinnedModelFilename), 
         std::forward_as_tuple(std::make_unique<AnimationSets>()));
     fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
         skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
+
+    // Robot.txt
+    auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
+    animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
+        50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
+        * XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
+    );
+    animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
+        12, XMMatrixScaling(0.7f, 0.7f, 0.7f)* XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
+        * XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
+    );
 
     std::vector<std::uint16_t> indices;
     indices.reserve(indices32bit.size());
@@ -1790,7 +1855,7 @@ void GameFramework::LoadSkinnedModel()
 
     mSkinnedMats.resize(skinnedSubsets.size());
     mSkinnedMats[0].Name = std::string("soldier_head");
-    mSkinnedMats[0].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+    mSkinnedMats[0].DiffuseAlbedo = { 0.7f, 0.7f, 0.7f, 1.0f };
     mSkinnedMats[0].FresnelR0 = { 0.05f, 0.05f, 0.05f };
     mSkinnedMats[0].Roughness = 0.5;
     mSkinnedMats[0].AlphaClip = false;
@@ -1815,6 +1880,79 @@ void GameFramework::LoadSkinnedModel()
     mSkinnedMats[2].MaterialTypeName = std::string("Skinned");
     mSkinnedMats[2].DiffuseMapName = std::string("checkboard.dds");
     mSkinnedMats[2].NormalMapName = std::string("upBody_norm.dds");
+}
+
+void GameFramework::BuildFbxModelGeometry()
+{
+    auto equipmentGeo = std::make_unique<MeshGeometry>();
+    equipmentGeo->Name = "equipmentGeo";
+
+    std::vector<Vertex> oneHandSwordVertices;
+    std::vector<UINT> oneHandSwordIndices32bit;
+    std::vector<FbxBinLoader::SubMeshInfo> oneHandSwordSubsets;
+    std::string oneHandSwordFileName = "Models\\OneHandSword.bin";
+    fbxBinLoader.LoadFbxBin(oneHandSwordFileName, 
+        oneHandSwordVertices, oneHandSwordIndices32bit, oneHandSwordSubsets);
+
+    std::vector<Vertex> shieldVertices;
+    std::vector<UINT> shieldIndices32bit;
+    std::vector<FbxBinLoader::SubMeshInfo> shieldSubsets;
+    std::string shieldFileName = "Models\\Shield.bin";
+    fbxBinLoader.LoadFbxBin(shieldFileName,
+        shieldVertices, shieldIndices32bit, shieldSubsets);
+
+    std::vector<Vertex> equipmentVertices;
+    equipmentVertices.insert(equipmentVertices.end(), std::begin(oneHandSwordVertices), std::end(oneHandSwordVertices));
+    equipmentVertices.insert(equipmentVertices.end(), std::begin(shieldVertices), std::end(shieldVertices));
+
+    std::vector<std::uint16_t> equipmentIndices;
+    equipmentIndices.insert(equipmentIndices.end(), std::begin(oneHandSwordIndices32bit), std::end(oneHandSwordIndices32bit));
+    equipmentIndices.insert(equipmentIndices.end(), std::begin(shieldIndices32bit), std::end(shieldIndices32bit));
+
+    const UINT vbByteSize = (UINT)equipmentVertices.size() * sizeof(Vertex);
+    const UINT ibByteSize = (UINT)equipmentIndices.size() * sizeof(std::uint16_t);
+
+    ThrowIfFailed(D3DCreateBlob(vbByteSize, &equipmentGeo->VertexBufferCPU));
+    CopyMemory(equipmentGeo->VertexBufferCPU->GetBufferPointer(), equipmentVertices.data(), vbByteSize);
+    ThrowIfFailed(D3DCreateBlob(ibByteSize, &equipmentGeo->IndexBufferCPU));
+    CopyMemory(equipmentGeo->IndexBufferCPU->GetBufferPointer(), equipmentIndices.data(), ibByteSize);
+
+    equipmentGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+        mCommandList.Get(), equipmentVertices.data(), vbByteSize, equipmentGeo->VertexBufferUploader);
+
+    equipmentGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+        mCommandList.Get(), equipmentIndices.data(), ibByteSize, equipmentGeo->IndexBufferUploader);
+
+    equipmentGeo->VertexByteStride = sizeof(Vertex);
+    equipmentGeo->VertexBufferByteSize = vbByteSize;
+    equipmentGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
+    equipmentGeo->IndexBufferByteSize = ibByteSize;
+
+    for (auto& subset: oneHandSwordSubsets)
+    {
+        SubmeshGeometry submesh;
+        std::string name("OneHandSword" + subset.name);
+
+        submesh.IndexCount = (UINT)subset.indexCount;
+        submesh.StartIndexLocation = subset.startIndexLocation;
+        submesh.BaseVertexLocation = subset.baseVertexLocation;
+
+        equipmentGeo->DrawArgs[name] = submesh;
+    }
+
+    for (auto& subset : shieldSubsets)
+    {
+        SubmeshGeometry submesh;
+        std::string name("Shield" + subset.name);
+
+        submesh.IndexCount = (UINT)subset.indexCount;
+        submesh.StartIndexLocation = subset.startIndexLocation + oneHandSwordIndices32bit.size();
+        submesh.BaseVertexLocation = subset.baseVertexLocation + oneHandSwordVertices.size();
+
+        equipmentGeo->DrawArgs[name] = submesh;
+    }
+
+    mGeometries[equipmentGeo->Name] = std::move(equipmentGeo);
 }
 
 void GameFramework::BuildPSOs()
@@ -1848,6 +1986,19 @@ void GameFramework::BuildPSOs()
     opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
     opaquePsoDesc.DSVFormat = mDepthStencilFormat;
     ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedOpaquePsoDesc = opaquePsoDesc;
+    equippedOpaquePsoDesc.VS = 
+    {
+        reinterpret_cast<BYTE*>(mShaders["equippedVS"]->GetBufferPointer()),
+        mShaders["equippedVS"]->GetBufferSize()
+    };
+    equippedOpaquePsoDesc.PS =
+    {
+        reinterpret_cast<BYTE*>(mShaders["equippedPS"]->GetBufferPointer()),
+        mShaders["equippedPS"]->GetBufferSize()
+    };
+    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedOpaquePsoDesc, IID_PPV_ARGS(&mPSOs["equippedOpaque"])));
 
     //
     // PSO for skinned pass.
@@ -1904,6 +2055,14 @@ void GameFramework::BuildPSOs()
     };
     ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skinnedSmapPsoDesc, IID_PPV_ARGS(&mPSOs["skinnedShadow_opaque"])));
 
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedSmapPsoDesc = smapPsoDesc;
+    equippedSmapPsoDesc.VS =
+    {
+        reinterpret_cast<BYTE*>(mShaders["equippedShadowVS"]->GetBufferPointer()),
+        mShaders["equippedShadowVS"]->GetBufferSize()
+    };
+    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedSmapPsoDesc, IID_PPV_ARGS(&mPSOs["equippedShadow_opaque"])));
+
     //
     // PSO for debug layer.
     //
@@ -1954,6 +2113,15 @@ void GameFramework::BuildPSOs()
         mShaders["drawNormalsPS"]->GetBufferSize()
     };
     ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skinnedDrawNormalsPsoDesc, IID_PPV_ARGS(&mPSOs["skinnedDrawNormals"])));
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedDrawNormalsPsoDesc = drawNormalsPsoDesc;
+    equippedDrawNormalsPsoDesc.VS =
+    {
+        reinterpret_cast<BYTE*>(mShaders["equippedDrawNormalsVS"]->GetBufferPointer()),
+        mShaders["equippedDrawNormalsVS"]->GetBufferSize()
+    };
+    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedDrawNormalsPsoDesc, IID_PPV_ARGS(&mPSOs["equippedDrawNormals"])));
+
 
     //
     // PSO for SSAO.
@@ -2031,7 +2199,9 @@ void GameFramework::BuildFrameResources()
         mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
             2, (UINT)WORLD.GetComponents<MeshComponent>().size(),
             1,
-            (UINT)mMaterials.size()));
+            (UINT)mMaterials.size(),
+            (UINT)(WORLD.GetComponents<EquipmentOwnerComponent>().size() * (UINT)EquipmentTypes::Count)
+            ));
     }
 }
 
@@ -2093,6 +2263,16 @@ void GameFramework::BuildMaterials()
 
         mMaterials[mat->Name] = std::move(mat);
     }
+
+    auto equipment = std::make_unique<Material>();
+    equipment->Name = "equipment";
+    equipment->MatCBIndex = matCBIndex++;
+    equipment->DiffuseSrvHeapIndex = 4;
+    equipment->NormalSrvHeapIndex = -1;
+    equipment->DiffuseAlbedo = XMFLOAT4(0.5f, 0.7f, 1.0f, 1.0f);
+    equipment->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
+    equipment->Roughness = 0.5f;
+    mMaterials["equipment"] = std::move(equipment);
 }
 
 void GameFramework::BuildRenderItems()
@@ -2102,7 +2282,8 @@ void GameFramework::BuildRenderItems()
     auto& skyComponents = WORLD.GetComponents<SkyComponent>();
     for (auto& skyCom : skyComponents) {
         MeshComponent comSkyMesh{ skyCom.GetOwner(), objCBIndexCounter++,
-            XMMatrixScaling(5000.0f, 5000.0f, 5000.0f), XMMatrixIdentity(),
+            XMFLOAT3(5000.0f, 5000.0f, 5000.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+            XMMatrixIdentity(),
             {mGeometries["shapeGeo"].get()}, {"sphere"}, { mMaterials["sky"].get() }
         };
         WORLD.AttachComponent(skyCom.GetOwner(), std::move(comSkyMesh));
@@ -2110,7 +2291,8 @@ void GameFramework::BuildRenderItems()
 
     auto hQuadObj = WORLD.AddObject();
     MeshComponent comQuadMesh{ hQuadObj, objCBIndexCounter++, 
-        XMMatrixIdentity(), XMMatrixIdentity(),
+        XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+        XMMatrixIdentity(),
         {mGeometries["shapeGeo"].get()}, {"quad"}, { mMaterials["bricks0"].get() }
     };
     WORLD.AttachComponent(hQuadObj, std::move(comQuadMesh));
@@ -2118,7 +2300,8 @@ void GameFramework::BuildRenderItems()
 
     auto hBoxObj = WORLD.AddObject();
     MeshComponent comBoxMesh( hBoxObj, objCBIndexCounter++,
-        XMMatrixScaling(2.0f, 1.0f, 2.0f)* XMMatrixTranslation(0.0f, 0.5f, 0.0f), XMMatrixScaling(1.0f, 1.0f, 1.0f),
+        XMFLOAT3(2.0f, 1.0f, 2.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.5f, 0.0f), 
+        XMMatrixScaling(1.0f, 1.0f, 1.0f),
         {mGeometries["shapeGeo"].get()}, {"box"}, { mMaterials["bricks0"].get() }
     );
     WORLD.AttachComponent(hBoxObj, std::move(comBoxMesh));
@@ -2126,7 +2309,8 @@ void GameFramework::BuildRenderItems()
 
     auto hGridObj = WORLD.AddObject();
     MeshComponent comGridMesh(hGridObj, objCBIndexCounter++,
-        XMMatrixIdentity(), XMMatrixScaling(8.0f, 8.0f, 1.0f),
+        XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+        XMMatrixScaling(8.0f, 8.0f, 1.0f),
         { mGeometries["shapeGeo"].get() }, { "grid" }, { mMaterials["tile0"].get() }
     );
     WORLD.AttachComponent(hGridObj, std::move(comGridMesh));
@@ -2140,42 +2324,69 @@ void GameFramework::BuildRenderItems()
         auto hLeftSphereObj = WORLD.AddObject();
         auto hRightSphereObj = WORLD.AddObject();
 
-        XMMATRIX leftCylWorld = XMMatrixTranslation(-5.0f, 1.5f, -10.0f + i * 5.0f);
-        XMMATRIX rightCylWorld = XMMatrixTranslation(+5.0f, 1.5f, -10.0f + i * 5.0f);
+        XMFLOAT3 leftCylWorldTranslation = XMFLOAT3(-5.0f, 1.5f, -10.0f + i * 5.0f);
+        XMFLOAT3 rightCylWorldTranslation = XMFLOAT3(+5.0f, 1.5f, -10.0f + i * 5.0f);
 
-        XMMATRIX leftSphereWorld = XMMatrixTranslation(-5.0f, 3.5f, -10.0f + i * 5.0f);
-        XMMATRIX rightSphereWorld = XMMatrixTranslation(+5.0f, 3.5f, -10.0f + i * 5.0f);
+        XMFLOAT3 leftSphereWorldTranslation = XMFLOAT3(-5.0f, 3.5f, -10.0f + i * 5.0f);
+        XMFLOAT3 rightSphereWorldTranslation = XMFLOAT3(+5.0f, 3.5f, -10.0f + i * 5.0f);
 
         MeshComponent comLeftCyleMesh(hLeftCylObj, objCBIndexCounter++,
-            leftCylWorld, brickTexTransform,
+            XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftCylWorldTranslation,
+            brickTexTransform,
             { mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
         );
         WORLD.AttachComponent(hLeftCylObj, std::move(comLeftCyleMesh));
         WORLD.AttachComponent(hLeftCylObj, NonAnimatedComponent(hLeftCylObj));
 
         MeshComponent comRightCyleMesh(hRightCylObj, objCBIndexCounter++,
-            rightCylWorld, brickTexTransform,
+            XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightCylWorldTranslation,
+            brickTexTransform,
             { mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
         );
         WORLD.AttachComponent(hRightCylObj, std::move(comRightCyleMesh));
         WORLD.AttachComponent(hRightCylObj, NonAnimatedComponent(hRightCylObj));
 
         MeshComponent comLeftSphereMesh(hLeftCylObj, objCBIndexCounter++,
-            leftSphereWorld, XMMatrixIdentity(),
+            XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftSphereWorldTranslation,
+            XMMatrixIdentity(),
             { mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
         );
         WORLD.AttachComponent(hLeftSphereObj, std::move(comLeftSphereMesh));
         WORLD.AttachComponent(hLeftSphereObj, NonAnimatedComponent(hLeftSphereObj));
 
         MeshComponent comRightSphereMesh(hLeftCylObj, objCBIndexCounter++,
-            rightSphereWorld, XMMatrixIdentity(),
+            XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightSphereWorldTranslation,
+            XMMatrixIdentity(),
             { mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
         );
         WORLD.AttachComponent(hRightSphereObj, std::move(comRightSphereMesh));
         WORLD.AttachComponent(hRightSphereObj, NonAnimatedComponent(hRightSphereObj));
     }
 
-    int skinnedCBIndexCounter = 0;
+    auto hPlayerOneHandSwordObj = WORLD.AddObject();
+    MeshComponent comPlayerOneHandSwordMesh(hPlayerOneHandSwordObj, objCBIndexCounter++,
+        XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+        XMMatrixIdentity(),
+        { mGeometries["equipmentGeo"].get() }, { "OneHandSword0" }, { mMaterials["equipment"].get() }
+    );
+    auto comEquipment = EquipmentComponent(hPlayerOneHandSwordObj);
+    comEquipment.equipmentType = EquipmentTypes::OneHandSword;
+    WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comPlayerOneHandSwordMesh));
+    WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comEquipment));
+
+    auto hPlayerShieldObj = WORLD.AddObject();
+    MeshComponent comPlayerShieldMesh(hPlayerShieldObj, objCBIndexCounter++,
+        XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+        XMMatrixIdentity(),
+        { mGeometries["equipmentGeo"].get() }, { "Shield0" }, { mMaterials["equipment"].get() }
+    );
+    auto comShieldEquipment = EquipmentComponent(hPlayerShieldObj);
+    comShieldEquipment.equipmentType = EquipmentTypes::Shield;
+    WORLD.AttachComponent(hPlayerShieldObj, std::move(comPlayerShieldMesh));
+    WORLD.AttachComponent(hPlayerShieldObj, std::move(comShieldEquipment));
+
+    UINT skinnedCBIndexCounter = 0;
+    UINT equippedCBIndexCounter = 0;
     auto hPlayerObj = WORLD.AddObject();
 
     MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
@@ -2189,12 +2400,12 @@ void GameFramework::BuildRenderItems()
         materials.push_back(mMaterials[mSkinnedMats[idx].Name].get());
     }
 
-    XMMATRIX modelScale = XMMatrixScaling(0.03f, 0.03f, 0.03f);
-    XMMATRIX modelRot = XMMatrixRotationY(MathHelper::Pi);
-    XMMATRIX modelOffset = XMMatrixTranslation(0.0f, 0.5f, 0.0f);
+    XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
+    XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
+    XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 0.5f, 0.0f);
 
     MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
-        modelScale * modelRot * modelOffset, XMMatrixIdentity(),
+        modelScale, modelRot, modelOffset, XMMatrixIdentity(),
         geometries, subMeshNames, materials
     );
     WORLD.AttachComponent(hPlayerObj, std::move(comPlayerMesh));
@@ -2205,7 +2416,19 @@ void GameFramework::BuildRenderItems()
         std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
     std::string clipName = std::string("Skeleton|OneHand_Base_Attack_E_2.001");
     comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(clipName);
+    EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
     WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
+    WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));
+
+    auto comEquipped = EquippedComponent(hPlayerOneHandSwordObj);
+    comEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::OneHandSword];
+    comEquipped.owner = hPlayerObj;
+    WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comEquipped));
+
+    auto comShieldEquipped = EquippedComponent(hPlayerShieldObj);
+    comShieldEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::Shield];
+    comShieldEquipped.owner = hPlayerObj;
+    WORLD.AttachComponent(hPlayerShieldObj, std::move(comShieldEquipped));
 }
 
 void GameFramework::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems)
@@ -2217,11 +2440,28 @@ void GameFramework::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const st
     {
         auto hOwner = ritem.GetOwner();
         auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
-        auto pAnim = WORLD.GetComponent<AnimationComponent>(hOwner);
 
-        if (pMesh && pAnim) {
-            D3D12_GPU_VIRTUAL_ADDRESS skinnedCBAddress = skinnedCB->GetGPUVirtualAddress() + pAnim->SkinnedCBIndex * skinnedCBByteSize;
+        if (pMesh) {
+            D3D12_GPU_VIRTUAL_ADDRESS skinnedCBAddress = skinnedCB->GetGPUVirtualAddress() + ritem.SkinnedCBIndex * skinnedCBByteSize;
             cmdList->SetGraphicsRootConstantBufferView(1, skinnedCBAddress);
+            DrawRenderItem(cmdList, pMesh);
+        }
+    }
+}
+
+void GameFramework::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<EquippedComponent>& ritems)
+{
+    auto equippedObjectCB = mCurrFrameResource->EquippedObjectCB->Resource();
+
+    // For each render item...
+    for (const auto& ritem : ritems)
+    {
+        auto hOwner = ritem.GetOwner();
+        auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
+
+        if (pMesh) {
+            D3D12_GPU_VIRTUAL_ADDRESS equippedCBAddress = equippedObjectCB->GetGPUVirtualAddress() + ritem.EquippedCBIndex * equippedObjCBByteSize;
+            cmdList->SetGraphicsRootConstantBufferView(6, equippedCBAddress);
             DrawRenderItem(cmdList, pMesh);
         }
     }
@@ -2289,6 +2529,9 @@ void GameFramework::DrawSceneToShadowMap()
     mCommandList->SetPipelineState(mPSOs["shadow_opaque"].Get());
     DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
 
+    mCommandList->SetPipelineState(mPSOs["equippedShadow_opaque"].Get());
+    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
+
     mCommandList->SetPipelineState(mPSOs["skinnedShadow_opaque"].Get());
     DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<AnimationComponent>());
 
@@ -2326,6 +2569,9 @@ void GameFramework::DrawNormalsAndDepth()
 
     mCommandList->SetPipelineState(mPSOs["drawNormals"].Get());
     DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
+
+    mCommandList->SetPipelineState(mPSOs["equippedDrawNormals"].Get());
+    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
 
     mCommandList->SetPipelineState(mPSOs["skinnedDrawNormals"].Get());
     DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<AnimationComponent>());

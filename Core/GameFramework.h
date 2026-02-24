@@ -18,6 +18,7 @@
 #include "Components/Mesh.h"
 #include "Components/Animation.h"
 #include "Components/Sky.h"
+#include "Components/Equipment.h"
 #include "../Model/GeometryGenerator.h"
 #include "../Model/Animation.h"
 #include "../Model/ModelLoader.h"
@@ -104,6 +105,7 @@ private:
     void BuildDescriptorHeaps();
     void BuildShadersAndInputLayout();
     void BuildShapeGeometry();
+    void BuildFbxModelGeometry();
     void LoadSkinnedModel();
     void BuildPSOs();
     void BuildFrameResources();
@@ -111,6 +113,7 @@ private:
     void BuildRenderItems();
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<NonAnimatedComponent>& ritems);
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems);
+    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<EquippedComponent>& ritems);
     void DrawRenderItem(ID3D12GraphicsCommandList* cmdList, const MeshComponent const * ritem);
     void DrawSceneToShadowMap();
     void DrawNormalsAndDepth();
@@ -169,6 +172,7 @@ protected:
 
     UINT skinnedCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(SkinnedConstants));
     UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+    UINT equippedObjCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(EquippedObjectConstants));
 
     // Derived class should set these in derived constructor to customize starting values.
     std::wstring mMainWndCaption = L"d3d App";
@@ -206,8 +210,7 @@ private:
 
     PassConstants mMainPassCB;  // index 0 of pass cbuffer.
 
-
-
+    FbxBinLoader fbxBinLoader;
     UINT mSkinnedSrvHeapStart = 0;
     std::string mSkinnedModelFilename = "Models\\Robot.bin";
     std::vector<std::string> mSkinnedTextureNames;

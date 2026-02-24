@@ -73,8 +73,13 @@ VertexOut VS(VertexIn vin)
     vin.TangentL.xyz = tangentL;
 #endif
 
+#ifdef EQUIPPED
+    vin.PosL = mul(float4(vin.PosL, 1.0f), gEquippedBoneToRootTransform).xyz;
+#endif
+    
     // Transform to world space.
     float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
+    posW = float4(posW.xyz, 1.0f);
     vout.PosW = posW.xyz;
 
     // Assumes nonuniform scaling; otherwise, need to use inverse-transpose of world matrix.
@@ -120,9 +125,9 @@ float4 PS(VertexOut pin) : SV_Target
 
 	// Interpolating normal can unnormalize it, so renormalize it.
     pin.NormalW = normalize(pin.NormalW);
-	
+    
     float4 normalMapSample = gTextureMaps[normalMapIndex].Sample(gsamAnisotropicWrap, pin.TexC);
-	float3 bumpedNormalW = NormalSampleToWorldSpace(normalMapSample.rgb, pin.NormalW, pin.TangentW);
+    float3 bumpedNormalW = NormalSampleToWorldSpace(normalMapSample.rgb, pin.NormalW, pin.TangentW);
 
 	// Uncomment to turn off normal mapping.
     //bumpedNormalW = pin.NormalW;
@@ -165,7 +170,6 @@ float4 PS_Simple(VertexOut pin) : SV_Target
 {
     MaterialData matData = gMaterialData[gMaterialIndex];
     float4 diffuseAlbedo = matData.DiffuseAlbedo;
-    diffuseAlbedo *= float4(0.5f, 0.5f, 0.5f, 1.0f);
     float3 fresnelR0 = matData.FresnelR0;
     float roughness = matData.Roughness;
     
@@ -176,7 +180,10 @@ float4 PS_Simple(VertexOut pin) : SV_Target
     float3 toEyeW = normalize(gEyePosW - pin.PosW);
 
 	// Indirect lighting.
-    float4 ambient = gAmbientLight * diffuseAlbedo;
+    float ambientAccess = gSsaoMap.Sample(gsamLinearClamp, pin.SsaoPosH.xy, 0.0f).r;
+
+    // Light terms.
+    float4 ambient = ambientAccess * gAmbientLight * diffuseAlbedo;
 
     const float shininess = 1.0f - roughness;
     Material mat = { diffuseAlbedo, fresnelR0, shininess };

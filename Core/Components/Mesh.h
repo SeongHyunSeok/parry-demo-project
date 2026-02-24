@@ -28,14 +28,18 @@ struct MeshComponent : public Component
     MeshComponent(
         Handle<GameObject> owner,
         const UINT objContextBufferIndex,
-        const FXMMATRIX& worldTransform,
+        const XMFLOAT3& scale,
+        const XMFLOAT3& rotation,
+        const XMFLOAT3& translation,
         const FXMMATRIX& texTransform,
         const std::vector<MeshGeometry*>& geometries,
         const std::vector<std::string>& subMeshNames,
         const std::vector<Material*>& materials,
         const std::vector<D3D12_PRIMITIVE_TOPOLOGY>* primitiveTypes = nullptr
-    ) : Component{ owner }, ObjCBIndex{ objContextBufferIndex } {
-        XMStoreFloat4x4(&World, worldTransform);
+    ) : Component{ owner }, ObjCBIndex{ objContextBufferIndex },
+        Scale{ scale }, Rotation{ rotation }, Translation{ translation } {
+        generateWorldTransformMatrix();
+
         XMStoreFloat4x4(&TexTransform, texTransform);
         drawItems.resize(geometries.size());
         for (int i = 0; i < drawItems.size(); ++i) {
@@ -57,9 +61,20 @@ struct MeshComponent : public Component
     MeshComponent(const MeshComponent& rhs) = delete;
     MeshComponent(MeshComponent&&) = default;
 
+    void generateWorldTransformMatrix() {
+        XMMATRIX modelScale = XMMatrixScaling(Scale.x, Scale.y, Scale.z);
+        XMMATRIX modelRot = XMMatrixRotationX(Rotation.x) * XMMatrixRotationY(Rotation.y) * XMMatrixRotationZ(Rotation.z);
+        XMMATRIX modelOffset = XMMatrixTranslation(Translation.x, Translation.y, Translation.z);
+
+        XMStoreFloat4x4(&World, modelScale * modelRot * modelOffset);
+    }
+
     // World matrix of the shape that describes the object's local space
     // relative to the world space, which defines the position, orientation,
     // and scale of the object in the world.
+    XMFLOAT3 Scale;
+    XMFLOAT3 Rotation;
+    XMFLOAT3 Translation;
     XMFLOAT4X4 World = MathHelper::Identity4x4();
 
     XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
@@ -74,4 +89,22 @@ struct MeshComponent : public Component
     UINT ObjCBIndex = -1;
 
     std::vector<DrawItem> drawItems;
+};
+
+struct NonAnimatedComponent : public Component {
+    NonAnimatedComponent(Handle<GameObject> owner) : Component{ owner } {};
+    NonAnimatedComponent(const NonAnimatedComponent& rhs) = delete;
+    NonAnimatedComponent(NonAnimatedComponent&&) = default;
+};
+
+struct EquippedComponent : public Component {
+    EquippedComponent(Handle<GameObject> owner) : Component{ owner } {};
+    EquippedComponent(const EquippedComponent& rhs) = delete;
+    EquippedComponent(EquippedComponent&&) = default;
+
+    UINT EquippedCBIndex = -1;
+    Handle<GameObject> owner;
+    XMFLOAT4X4 equippedBoneToRootTransfrom;
+
+    int NumFramesDirty = gNumFrameResources;
 };

@@ -163,6 +163,7 @@ float AnimationSets::GetClipEndTime(const std::string& clipName)const
 }
 
 void AnimationSets::GetFinalTransforms(const std::string& clipName, float timePos,
+	std::vector<DirectX::XMFLOAT4X4>& toRootTransforms,
 	std::vector<DirectX::XMFLOAT4X4>& finalTransforms)const
 {
 	UINT numBones = boneHierarchy.size();
@@ -176,8 +177,6 @@ void AnimationSets::GetFinalTransforms(const std::string& clipName, float timePo
 	//
 	// Traverse the hierarchy and transform all the bones to the root space.
 	//
-
-	std::vector<XMFLOAT4X4> toRootTransforms(numBones);
 
 	// The root bone has index 0.  The root bone has no parent, so its toRootTransform
 	// is just its local bone transform.
@@ -212,6 +211,7 @@ AnimationController::AnimationController(AnimationSets* animationSets)
 	if (!animationSets) return;
 
 	finalTransforms.resize(animationSets->BoneCount());
+	toRootTransforms.resize(animationSets->BoneCount());
 
 	for (const auto& it : animationSets->animationSets) {
 		if (curAnimationName.empty()) {
@@ -257,7 +257,7 @@ void AnimationController::AdvanceTime(float elapsedTime)
 	UpdateTimePosition(elapsedTime * track.speed, track);
 
 	// Compute the final transforms for this time position.
-	animationSets->GetFinalTransforms(curAnimationName, timePosition, finalTransforms);
+	animationSets->GetFinalTransforms(curAnimationName, timePosition, toRootTransforms, finalTransforms);
 }
 
 void AnimationController::UpdateTimePosition(float elapsedTime, const AnimationTrack& track)

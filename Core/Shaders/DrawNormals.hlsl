@@ -70,6 +70,10 @@ VertexOut VS(VertexIn vin)
     vin.TangentL.xyz = tangentL;
 #endif
 
+#ifdef EQUIPPED
+    vin.PosL = mul(float4(vin.PosL, 1.0f), gEquippedBoneToRootTransform).xyz;
+#endif
+    
     // Assumes nonuniform scaling; otherwise, need to use inverse-transpose of world matrix.
     vout.NormalW = mul(vin.NormalL, (float3x3)gWorld);
 	vout.TangentW = mul(vin.TangentL, (float3x3)gWorld);
@@ -87,16 +91,16 @@ VertexOut VS(VertexIn vin)
 
 float4 PS(VertexOut pin) : SV_Target
 {
+#ifdef ALPHA_TEST
 	// Fetch the material data.
 	MaterialData matData = gMaterialData[gMaterialIndex];
 	float4 diffuseAlbedo = matData.DiffuseAlbedo;
 	uint diffuseMapIndex = matData.DiffuseMapIndex;
-	uint normalMapIndex = matData.NormalMapIndex;
-	
+	uint normalMapIndex = matData.NormalMapIndex;	
+    
     // Dynamically look up the texture in the array.
     diffuseAlbedo *= gTextureMaps[diffuseMapIndex].Sample(gsamAnisotropicWrap, pin.TexC);
 
-#ifdef ALPHA_TEST
     // Discard pixel if texture alpha < 0.1.  We do this test as soon 
     // as possible in the shader so that we can potentially exit the
     // shader early, thereby skipping the rest of the shader code.

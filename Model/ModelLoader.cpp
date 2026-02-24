@@ -22,36 +22,27 @@ bool FbxBinLoader::LoadFbxBin(const std::string& filename,
 	std::unordered_map<std::string, FrameData> frames;
 	std::vector<std::string> tmpBoneNames;
 	std::vector<DirectX::XMFLOAT4X4> tmpBoneOffsets;
-	for (; ; )
+
+	if (FileUtility::ReadStringFromFile(file, pstrToken))
 	{
-		if (FileUtility::ReadStringFromFile(file, pstrToken))
+		if (!strcmp(pstrToken, "<Hierarchy>"))
 		{
-			if (!strcmp(pstrToken, "<Hierarchy>"))
+			for (; ; )
 			{
-				for (; ; )
+				FileUtility::ReadStringFromFile(file, pstrToken);
+				if (!strcmp(pstrToken, "<Frame>:"))
 				{
-					FileUtility::ReadStringFromFile(file, pstrToken);
-					if (!strcmp(pstrToken, "<Frame>:"))
-					{
-						std::string frameRootName = "PARRY_DEMO_FRAME_ROOT";
-						LoadFrameHierarchyFromFile(file, vertices, tmpSkinnedVertices, indices, subsets, frames, tmpBoneNames, tmpBoneOffsets, frameRootName);
-					}
-					else if (!strcmp(pstrToken, "</Hierarchy>"))
-					{
-						break;
-					}
+					std::string frameRootName = "PARRY_DEMO_FRAME_ROOT";
+					LoadFrameHierarchyFromFile(file, vertices, tmpSkinnedVertices, indices, subsets, frames, tmpBoneNames, tmpBoneOffsets, frameRootName);
+				}
+				else if (!strcmp(pstrToken, "</Hierarchy>"))
+				{
+					break;
 				}
 			}
-			else if (!strcmp(pstrToken, "</Animation>"))
-			{
-				break;
-			}
-		}
-		else
-		{
-			break;
 		}
 	}
+
 
 	::fclose(file);
 
