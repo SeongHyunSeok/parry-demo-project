@@ -5,6 +5,8 @@
 #include "world.h"
 #include <format>
 #include <iostream>
+#include <WindowsX.h>
+#include "Components/Mesh.h"
 
 
 Handle<GameObject> debugObj1;
@@ -23,7 +25,7 @@ namespace physics {
 			OnContactValidate(const Body& inBody1, const Body& inBody2,
 				RVec3Arg inBaseOffset,
 				const CollideShapeResult& inCollisionResult) override {
-			cout << "Contact validate callback" << endl;
+			//cout << "Contact validate callback" << endl;
 
 			// Allows you to ignore a contact before it is created (using layers to not
 			// make objects collide is cheaper!)
@@ -54,12 +56,12 @@ namespace physics {
 		virtual void OnContactRemoved(const SubShapeIDPair& inSubShapePair) override {
 			auto idBody1 = inSubShapePair.GetBody1ID();
 			auto idBody2 = inSubShapePair.GetBody2ID();
-			auto& interface = physics_system.GetBodyInterfaceNoLock();
+			auto& rInterface = PHYSICS_SYSTEM.GetBodyInterfaceNoLock();
 
 			auto& meta1 =
-				*reinterpret_cast<BodyMetadata*>(interface.GetUserData(idBody1));
+				*reinterpret_cast<BodyMetadata*>(rInterface.GetUserData(idBody1));
 			auto& meta2 =
-				*reinterpret_cast<BodyMetadata*>(interface.GetUserData(idBody2));
+				*reinterpret_cast<BodyMetadata*>(rInterface.GetUserData(idBody2));
 			auto pObject1 = WORLD.GetGameObject(meta1.owner);
 			auto pObject2 = WORLD.GetGameObject(meta2.owner);
 			assert(pObject1);
@@ -76,9 +78,9 @@ namespace physics {
 	public:
 		virtual void OnBodyActivated(const BodyID& inBodyID,
 			uint64 inBodyUserData) override {
-			auto& interface = physics_system.GetBodyInterfaceNoLock();
+			auto& rInterface = PHYSICS_SYSTEM.GetBodyInterfaceNoLock();
 			auto& meta =
-				*reinterpret_cast<BodyMetadata*>(interface.GetUserData(inBodyID));
+				*reinterpret_cast<BodyMetadata*>(rInterface.GetUserData(inBodyID));
 			cout << "A body got activated " << std::format("index: {}", meta.owner.idx) << endl;
 		}
 
@@ -128,7 +130,7 @@ namespace physics {
 	void InitPhysics() {
 		RegisterDefaultAllocator();
 		temp_allocator = new TempAllocatorImpl{ 10 * 1024 * 1024 };
-		job_system = new JobSystemThreadPool( cMaxPhysicsJobs, cMaxPhysicsBarriers, thread::hardware_concurrency() - 1
+		job_system = new JobSystemThreadPool(cMaxPhysicsJobs, cMaxPhysicsBarriers, thread::hardware_concurrency() - 1
 		);
 		Factory::sInstance = new Factory();
 		// Register all physics types with the factory and install their collision
@@ -166,7 +168,7 @@ namespace physics {
 		const uint cMaxContactConstraints = 1024;
 
 		// Now we can create the actual physics system.
-		physics_system.Init(cMaxBodies, cNumBodyMutexes, cMaxBodyPairs,
+		PHYSICS_SYSTEM.Init(cMaxBodies, cNumBodyMutexes, cMaxBodyPairs,
 			cMaxContactConstraints, broad_phase_layer_interface,
 			object_vs_broadphase_layer_filter,
 			object_vs_object_layer_filter);
@@ -174,12 +176,12 @@ namespace physics {
 		// A body activation listener gets notified when bodies activate and go to
 		// sleep Note that this is called from a job so whatever you do here needs to
 		// be thread safe. Registering one is entirely optional.
-		physics_system.SetBodyActivationListener(&body_activation_listener);
+		PHYSICS_SYSTEM.SetBodyActivationListener(&body_activation_listener);
 
 		// A contact listener gets notified when bodies (are about to) collide, and
 		// when they separate again. Note that this is called from a job so whatever
 		// you do here needs to be thread safe. Registering one is entirely optional.
-		physics_system.SetContactListener(&contact_listener);
+		PHYSICS_SYSTEM.SetContactListener(&contact_listener);
 	}
 
 	EventPropagation StaticBody::HandleEvent(Event& event) {
@@ -263,16 +265,97 @@ namespace physics {
 		static float accDeltaTime = 0.0f;
 		accDeltaTime += deltaTime;
 
-		if (accDeltaTime < cDeltaTime) {
-			return;
+		auto& characters = WORLD.GetComponents<CharacterBody>();
+		for (auto& character : characters) {
+			character.Update(deltaTime);
 		}
 
-		size_t requiredSteps = (int)(round(accDeltaTime / cDeltaTime));
-		float simulationDeltaTime = accDeltaTime;
-		accDeltaTime = 0.f;
-		//cout << "simulation delta time: " << simulationDeltaTime << ", steps: " << requiredSteps << endl;
+		if (accDeltaTime >= cDeltaTime) {
+			size_t requiredSteps = (int)(round(accDeltaTime / cDeltaTime));
+			float simulationDeltaTime = accDeltaTime;
+			accDeltaTime = 0.f;
 
-		physics_system.Update(simulationDeltaTime, requiredSteps, temp_allocator,
-			job_system);
+			PHYSICS_SYSTEM.Update(simulationDeltaTime, requiredSteps, temp_allocator,
+				job_system);
+		}
+
+		for (auto& character : characters) {
+			auto hOwner = character.GetOwner();
+			auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
+			if (pMesh) {
+				auto pos = character.GetController().GetPosition();
+				pMesh->Translation.x = pos.GetX();
+				pMesh->Translation.y = pos.GetY();
+				pMesh->NumFramesDirty = gNumFrameResources;
+				pMesh->Translation.z = pos.GetZ();
+			}
+		}
+	}
+
+	void CharacterBody::Update(float dt) {
+		if (!movementDir.IsNearZero()) {
+			movementDir = movementDir.Normalized();
+		}
+		bool player_controls_horizontal_velocity = controller->IsSupported();
+		if (player_controls_horizontal_velocity)
+		{
+			// Smooth the player input
+			desiredVelocity = 0.25f * movementDir * speed + 0.75f * desiredVelocity;
+
+			// True if the player intended to move
+			allowSliding = !movementDir.IsNearZero();
+		}
+		else
+		{
+			// While in air we allow sliding
+			allowSliding = true;
+		}
+
+		controller->UpdateGroundVelocity();
+		Vec3 current_vertical_velocity = controller->GetLinearVelocity().Dot(controller->GetUp()) * controller->GetUp();
+		Vec3 ground_velocity = controller->GetGroundVelocity();
+		Vec3 new_velocity;
+		bool moving_towards_ground = (current_vertical_velocity.GetY() - ground_velocity.GetY()) < 0.1f;
+		if (
+			controller->GetGroundState() == CharacterVirtual::EGroundState::OnGround	// If on ground
+			&&
+			moving_towards_ground)
+		{
+			// Assume velocity of ground when on ground
+			new_velocity = ground_velocity;
+
+			// Jump
+			if (inJump && moving_towards_ground)
+				new_velocity += jumpSpeed * controller->GetUp();
+		}
+		else
+			new_velocity = current_vertical_velocity;
+		// Gravity
+		new_velocity += PHYSICS_SYSTEM.GetGravity() * dt;
+
+		if (player_controls_horizontal_velocity)
+		{
+			// Player input
+			new_velocity += desiredVelocity;
+		}
+		else
+		{
+			// Preserve horizontal velocity
+			Vec3 current_horizontal_velocity = controller->GetLinearVelocity() - current_vertical_velocity;
+			new_velocity += current_horizontal_velocity;
+		}
+
+		// Update character velocity
+		controller->SetLinearVelocity(new_velocity);
+
+		CharacterVirtual::ExtendedUpdateSettings update_settings;
+
+		controller->ExtendedUpdate(dt,
+			-controller->GetUp() * PHYSICS_SYSTEM.GetGravity().Length(),
+			update_settings,
+			PHYSICS_SYSTEM.GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
+			PHYSICS_SYSTEM.GetDefaultLayerFilter(Layers::MOVING),
+			{}, {},
+			*temp_allocator);
 	}
 } // namespace physics

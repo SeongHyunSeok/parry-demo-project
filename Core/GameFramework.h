@@ -67,7 +67,6 @@ protected:
     // Convenience overrides for handling mouse input.
     virtual void OnMouseDown(WPARAM btnState, int x, int y);
     virtual void OnMouseUp(WPARAM btnState, int x, int y);
-    virtual void OnMouseMove(WPARAM btnState, int x, int y);
 
 protected:
 
@@ -89,7 +88,8 @@ protected:
     void LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format);
 
 private:
-    void OnKeyboardInput(float dt);
+    void HandleKeyboardInput(Camera& camera, float dt);
+    void HandleMouseInput(Camera& camera, float dt);
     void AnimateMaterials(float dt);
     void UpdateObjectCBs(float dt);
     void UpdateSkinnedCBs(float dt);

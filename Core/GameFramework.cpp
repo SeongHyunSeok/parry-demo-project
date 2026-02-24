@@ -3,16 +3,23 @@
 #include "GameFramework.h"
 #include "physics.h"
 #include "world.h"
+#include "inputs.h"
 #include <WindowsX.h>
+
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/PlaneShape.h>
+#include "Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h"
+#include "Jolt/Physics/Character/CharacterVirtual.h"
+
 
 using Microsoft::WRL::ComPtr;
 using namespace std;
 using namespace DirectX;
 
 static Camera& GetMainCamera() {
-    auto& cameras = WORLD.GetComponents<Camera>();
-    assert(!cameras.empty());
-    return cameras[0];
+	auto& cameras = WORLD.GetComponents<Camera>();
+	assert(!cameras.empty());
+	return cameras[0];
 }
 
 GameFramework* GameFramework::mApp = nullptr;
@@ -77,7 +84,7 @@ int GameFramework::Run()
 {
 	MSG msg = { 0 };
 
-    CPUClockPoint start = GLOBAL_TIMER.Now();
+	CPUClockPoint start = GLOBAL_TIMER.Now();
 
 	while (msg.message != WM_QUIT)
 	{
@@ -92,19 +99,20 @@ int GameFramework::Run()
 		{
 			if (!mAppPaused)
 			{
-                float dt = mTimerView.GetElapsed<std::chrono::milliseconds>()->count() / 1000.f;
-                CalculateFrameStats();
+				float dt = mTimerView.GetElapsed<std::chrono::milliseconds>()->count() / 1000.f;
+				CalculateFrameStats();
 				Update(dt);
 				Draw(dt);
 
-                auto now = GLOBAL_TIMER.Now();
-                GLOBAL_TIMER.RecordElapsed(start, now);
-                start = now;
+				auto now = GLOBAL_TIMER.Now();
+				GLOBAL_TIMER.RecordElapsed(start, now);
+				start = now;
 			}
 			else
 			{
 				Sleep(10);
 			}
+			InputManager::GetInstance().ResetPreviousStates();
 		}
 	}
 
@@ -122,7 +130,7 @@ void GameFramework::CalculateFrameStats()
 
 	frameCnt++;
 
-    timeElapsed += GLOBAL_TIMER.GetElapsed<std::chrono::duration<float>>()->count();
+	timeElapsed += GLOBAL_TIMER.GetElapsed<std::chrono::duration<float>>()->count();
 
 	// Compute averages over one second period.
 	if (timeElapsed >= 1.0f)
@@ -154,13 +162,13 @@ bool GameFramework::Initialize()
 		return false;
 
 
-    // Initialization
-    auto initTimePoint = GLOBAL_TIMER.Now();
-    physics::InitPhysics();
-    auto hCameraObj = WORLD.AddObject();
-    Camera comCamera{ hCameraObj };
-    comCamera.SetPosition(0.0f, 2.0f, -15.0f);
-    WORLD.AttachComponent(hCameraObj, std::move(comCamera));
+	// Initialization
+	auto initTimePoint = GLOBAL_TIMER.Now();
+	physics::InitPhysics();
+	auto hCameraObj = WORLD.AddObject();
+	Camera comCamera{ hCameraObj };
+	comCamera.SetPosition(0.0f, 2.0f, -15.0f);
+	WORLD.AttachComponent(hCameraObj, std::move(comCamera));
 
 	// Do the initial resize code.
 	OnResize();
@@ -184,7 +192,7 @@ bool GameFramework::Initialize()
 	BuildDescriptorHeaps();
 	BuildShadersAndInputLayout();
 	BuildShapeGeometry();
-    BuildFbxModelGeometry();
+	BuildFbxModelGeometry();
 	BuildMaterials();
 	BuildRenderItems();
 	BuildFrameResources();
@@ -200,7 +208,7 @@ bool GameFramework::Initialize()
 	// Wait until initialization is complete.
 	FlushCommandQueue();
 
-    GLOBAL_TIMER.RecordElapsed(initTimePoint, GLOBAL_TIMER.Now());
+	GLOBAL_TIMER.RecordElapsed(initTimePoint, GLOBAL_TIMER.Now());
 
 	return true;
 }
@@ -264,7 +272,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		if (LOWORD(wParam) == WA_INACTIVE)
 		{
 			mAppPaused = true;
-            mTimerView.SetTimeMultiplier(0.0);
+			mTimerView.SetTimeMultiplier(0.0);
 		}
 		else
 		{
@@ -334,7 +342,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	case WM_ENTERSIZEMOVE:
 		mAppPaused = true;
 		mResizing = true;
-        mTimerView.SetTimeMultiplier(0.0);
+		mTimerView.SetTimeMultiplier(0.0);
 		return 0;
 
 		// WM_EXITSIZEMOVE is sent when the user releases the resize bars.
@@ -342,7 +350,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	case WM_EXITSIZEMOVE:
 		mAppPaused = false;
 		mResizing = false;
-        mTimerView.SetTimeMultiplier(1.0);
+		mTimerView.SetTimeMultiplier(1.0);
 		OnResize();
 		return 0;
 
@@ -364,17 +372,36 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		return 0;
 
 	case WM_LBUTTONDOWN:
+		InputManager::GetInstance().HandlePressed(VK_LBUTTON);
+		goto mouse_down;
 	case WM_MBUTTONDOWN:
+		InputManager::GetInstance().HandlePressed(VK_MBUTTON);
+		goto mouse_down;
 	case WM_RBUTTONDOWN:
+		InputManager::GetInstance().HandlePressed(VK_RBUTTON);
+	mouse_down:
 		OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		InputManager::GetInstance().HandleMouseMovement(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_LBUTTONUP:
+		InputManager::GetInstance().HandleReleased(VK_LBUTTON);
+		goto mouse_up;
 	case WM_MBUTTONUP:
+		InputManager::GetInstance().HandleReleased(VK_MBUTTON);
+		goto mouse_up;
 	case WM_RBUTTONUP:
+		InputManager::GetInstance().HandleReleased(VK_RBUTTON);
+	mouse_up:
 		OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_MOUSEMOVE:
-		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		InputManager::GetInstance().HandleMouseMovement(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		return 0;
+	case WM_KEYDOWN:
+		// Treat as key is pressed only when repeat count is one
+		if ((lParam & 0xFFFF) <= 1) {
+			InputManager::GetInstance().HandlePressed(wParam);
+		}
 		return 0;
 	case WM_KEYUP:
 		if (wParam == VK_ESCAPE)
@@ -383,7 +410,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		}
 		else if ((int)wParam == VK_F2)
 			Set4xMsaaState(!m4xMsaaState);
-
+		InputManager::GetInstance().HandleReleased(wParam);
 		return 0;
 	}
 
@@ -737,7 +764,7 @@ void GameFramework::OnResize()
 
 	///////////
 
-    auto& camera = GetMainCamera();
+	auto& camera = GetMainCamera();
 	camera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 
 	if (mSsao != nullptr)
@@ -772,7 +799,14 @@ void GameFramework::CreateRtvAndDsvDescriptorHeaps()
 
 void GameFramework::Update(float dt)
 {
-	OnKeyboardInput(dt);
+	auto& camera = GetMainCamera();
+
+	HandleKeyboardInput(camera, dt);
+	HandleMouseInput(camera, dt);
+
+	camera.UpdateViewMatrix();
+
+	physics::UpdatePhysicsSystem(dt);
 
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
@@ -905,7 +939,7 @@ void GameFramework::Draw(float dt)
 	// If we wanted to use "local" cube maps, we would have to change them per-object, or dynamically
 	// index into an array of cube maps.
 
-    auto& skyComp = WORLD.GetComponents<SkyComponent>().front();
+	auto& skyComp = WORLD.GetComponents<SkyComponent>().front();
 	CD3DX12_GPU_DESCRIPTOR_HANDLE skyTexDescriptor(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 	skyTexDescriptor.Offset(skyComp.mSkyTexHeapIndex, mCbvSrvUavDescriptorSize);
 	mCommandList->SetGraphicsRootDescriptorTable(4, skyTexDescriptor);
@@ -913,8 +947,8 @@ void GameFramework::Draw(float dt)
 	mCommandList->SetPipelineState(mPSOs["opaque"].Get());
 	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
 
-    mCommandList->SetPipelineState(mPSOs["equippedOpaque"].Get());
-    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
+	mCommandList->SetPipelineState(mPSOs["equippedOpaque"].Get());
+	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
 
 	mCommandList->SetPipelineState(mPSOs["skinnedOpaque"].Get());
 	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<AnimationComponent>());
@@ -922,11 +956,11 @@ void GameFramework::Draw(float dt)
 	// mCommandList->SetPipelineState(mPSOs["debug"].Get()); // TO DO
 
 	mCommandList->SetPipelineState(mPSOs["sky"].Get());
-    auto hSkyCompOwner = skyComp.GetOwner();
-    auto pSkyMeshComp = WORLD.GetComponent<MeshComponent>(hSkyCompOwner);
-    if (pSkyMeshComp) {
-        DrawRenderItem(mCommandList.Get(), pSkyMeshComp);
-    }
+	auto hSkyCompOwner = skyComp.GetOwner();
+	auto pSkyMeshComp = WORLD.GetComponent<MeshComponent>(hSkyCompOwner);
+	if (pSkyMeshComp) {
+		DrawRenderItem(mCommandList.Get(), pSkyMeshComp);
+	}
 
 	// Indicate a state transition on the resource usage.
 	auto rtToPre = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -955,51 +989,63 @@ void GameFramework::Draw(float dt)
 
 void GameFramework::OnMouseDown(WPARAM btnState, int x, int y)
 {
-    mLastMousePos.x = x;
-    mLastMousePos.y = y;
-
-    SetCapture(mhMainWnd);
+	SetCapture(mhMainWnd);
 }
 
 void GameFramework::OnMouseUp(WPARAM btnState, int x, int y)
 {
-    ReleaseCapture();
+	ReleaseCapture();
 }
 
-void GameFramework::OnMouseMove(WPARAM btnState, int x, int y)
+void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 {
-    if ((btnState & MK_LBUTTON) != 0)
-    {
-        auto& camera = GetMainCamera();
-        // Make each pixel correspond to a quarter of a degree.
-        float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
-        float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
+	using namespace physics;
+	const auto& inputManager = InputManager::GetInstance();
 
-        camera.Pitch(dy);
-        camera.RotateY(dx);
-    }
+	if (inputManager.IsPressed('W'))
+		camera.Walk(10.0f * dt);
 
-    mLastMousePos.x = x;
-    mLastMousePos.y = y;
+	if (inputManager.IsPressed('S'))
+		camera.Walk(-10.0f * dt);
+
+	if (inputManager.IsPressed('A'))
+		camera.Strafe(-10.0f * dt);
+
+	if (inputManager.IsPressed('D'))
+		camera.Strafe(10.0f * dt);
+
+
+	for (auto& player : WORLD.GetComponents<physics::CharacterBody>()) {
+		player.inJump = inputManager.IsJustPressed(VK_SPACE);
+		player.movementDir = Vec3::sZero();
+		if (GetAsyncKeyState(VK_DOWN) < 0) {
+			player.movementDir += Vec3{ 0.0, 0.0, -1.0 };
+		}
+		if (GetAsyncKeyState(VK_UP) < 0) {
+			player.movementDir += Vec3{ 0.0, 0.0, 1.0 };
+		}
+		if (GetAsyncKeyState(VK_LEFT) < 0) {
+			player.movementDir += Vec3{ -1.0, 0.0, 0.0 };
+		}
+		if (GetAsyncKeyState(VK_RIGHT) < 0) {
+			player.movementDir += Vec3{ 1.0, 0.0, 0.0 };
+		}
+		break;
+	}
 }
 
-void GameFramework::OnKeyboardInput(float dt)
-{
-    auto& camera = GetMainCamera();
+void GameFramework::HandleMouseInput(Camera& camera, float dt) {
+	const auto& inputManager = InputManager::GetInstance();
+	if (inputManager.IsPressed(VK_LBUTTON))
+	{
+		auto mouseMoveVec = inputManager.GetMouseMotionVec();
+		// Make each pixel correspond to a quarter of a degree.
+		float dx = XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
+		float dy = XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.y));
 
-    if (GetAsyncKeyState('W') & 0x8000)
-        camera.Walk(10.0f * dt);
-
-    if (GetAsyncKeyState('S') & 0x8000)
-        camera.Walk(-10.0f * dt);
-
-    if (GetAsyncKeyState('A') & 0x8000)
-        camera.Strafe(-10.0f * dt);
-
-    if (GetAsyncKeyState('D') & 0x8000)
-        camera.Strafe(10.0f * dt);
-
-    camera.UpdateViewMatrix();
+		camera.Pitch(dy);
+		camera.RotateY(dx);
+	}
 }
 
 void GameFramework::AnimateMaterials(float dt)
@@ -1009,1672 +1055,1694 @@ void GameFramework::AnimateMaterials(float dt)
 
 void GameFramework::UpdateObjectCBs(float dt)
 {
-    auto currObjectCB = mCurrFrameResource->ObjectCB.get();
-    for (auto& e : WORLD.GetComponents<MeshComponent>())
-    {
-        // Only update the cbuffer data if the constants have changed.  
-        // This needs to be tracked per frame resource.
-        if (e.NumFramesDirty > 0)
-        {
-            e.generateWorldTransformMatrix();
-            XMMATRIX world = XMLoadFloat4x4(&e.World);
-            XMMATRIX texTransform = XMLoadFloat4x4(&e.TexTransform);
+	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
+	for (auto& e : WORLD.GetComponents<MeshComponent>())
+	{
+		// Only update the cbuffer data if the constants have changed.  
+		// This needs to be tracked per frame resource.
+		if (e.NumFramesDirty > 0)
+		{
+			e.generateWorldTransformMatrix();
+			XMMATRIX world = XMLoadFloat4x4(&e.World);
+			XMMATRIX texTransform = XMLoadFloat4x4(&e.TexTransform);
 
-            ObjectConstants objConstants;
-            XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
-            XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
-            for (const auto& it : e.drawItems) {
-                objConstants.MaterialIndex = it.Mat->MatCBIndex; // TO DO
-            }
-            currObjectCB->CopyData(e.ObjCBIndex, objConstants);
+			ObjectConstants objConstants;
+			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
+			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
+			for (const auto& it : e.drawItems) {
+				objConstants.MaterialIndex = it.Mat->MatCBIndex; // TO DO
+			}
+			currObjectCB->CopyData(e.ObjCBIndex, objConstants);
 
-            // Next FrameResource need to be updated too.
-            e.NumFramesDirty--;
-        }
-    }
+			// Next FrameResource need to be updated too.
+			e.NumFramesDirty--;
+		}
+	}
 
-    auto currEquippedObjCB = mCurrFrameResource->EquippedObjectCB.get();
-    for (auto& e : WORLD.GetComponents<EquippedComponent>())
-    {
-        // Only update the cbuffer data if the constants have changed.  
-        // This needs to be tracked per frame resource.
-        if (e.NumFramesDirty > 0)
-        {
-            XMMATRIX equippedBoneToRootTransfrom = XMLoadFloat4x4(&e.equippedBoneToRootTransfrom);
+	auto currEquippedObjCB = mCurrFrameResource->EquippedObjectCB.get();
+	for (auto& e : WORLD.GetComponents<EquippedComponent>())
+	{
+		// Only update the cbuffer data if the constants have changed.  
+		// This needs to be tracked per frame resource.
+		if (e.NumFramesDirty > 0)
+		{
+			XMMATRIX equippedBoneToRootTransfrom = XMLoadFloat4x4(&e.equippedBoneToRootTransfrom);
 
-            EquippedObjectConstants equippedObjConstants;
-            XMStoreFloat4x4(&equippedObjConstants.EquippedBoneFinalTransform, XMMatrixTranspose(equippedBoneToRootTransfrom));
-            currEquippedObjCB->CopyData(e.EquippedCBIndex, equippedObjConstants);
+			EquippedObjectConstants equippedObjConstants;
+			XMStoreFloat4x4(&equippedObjConstants.EquippedBoneFinalTransform, XMMatrixTranspose(equippedBoneToRootTransfrom));
+			currEquippedObjCB->CopyData(e.EquippedCBIndex, equippedObjConstants);
 
-            // Next FrameResource need to be updated too.
-            e.NumFramesDirty--;
-        }
-    }
+			// Next FrameResource need to be updated too.
+			e.NumFramesDirty--;
+		}
+	}
 }
 
 void GameFramework::UpdateSkinnedCBs(float dt)
 {
-    auto currSkinnedCB = mCurrFrameResource->SkinnedCB.get();
+	auto currSkinnedCB = mCurrFrameResource->SkinnedCB.get();
 
-    // We only have one skinned model being animated.
-    const auto& animationComponents = WORLD.GetComponents<AnimationComponent>();
-    for (auto& comAni : animationComponents) {
-        comAni.mSkinnedModelAnimationController->AdvanceTime(dt);
+	// We only have one skinned model being animated.
+	const auto& animationComponents = WORLD.GetComponents<AnimationComponent>();
+	for (auto& comAni : animationComponents) {
+		comAni.mSkinnedModelAnimationController->AdvanceTime(dt);
 
-        SkinnedConstants skinnedConstants;
-        std::copy(
-            std::begin(comAni.mSkinnedModelAnimationController->finalTransforms),
-            std::end(comAni.mSkinnedModelAnimationController->finalTransforms),
-            &skinnedConstants.BoneTransforms[0]);
+		SkinnedConstants skinnedConstants;
+		std::copy(
+			std::begin(comAni.mSkinnedModelAnimationController->finalTransforms),
+			std::end(comAni.mSkinnedModelAnimationController->finalTransforms),
+			&skinnedConstants.BoneTransforms[0]);
 
-        currSkinnedCB->CopyData(0, skinnedConstants);
-    }
+		currSkinnedCB->CopyData(0, skinnedConstants);
+	}
 
-    for (auto& comEquipped : WORLD.GetComponents<EquippedComponent>()) {
-        auto hEquippedObj = comEquipped.GetOwner();
-        auto pEquippedObjMesh = WORLD.GetComponent<MeshComponent>(hEquippedObj);
-        auto pEquipment = WORLD.GetComponent<EquipmentComponent>(hEquippedObj);
+	for (auto& comEquipped : WORLD.GetComponents<EquippedComponent>()) {
+		auto hEquippedObj = comEquipped.GetOwner();
+		auto pEquippedObjMesh = WORLD.GetComponent<MeshComponent>(hEquippedObj);
+		auto pEquipment = WORLD.GetComponent<EquipmentComponent>(hEquippedObj);
 
-        auto pOwnerAnimation = WORLD.GetComponent<AnimationComponent>(comEquipped.owner);
-        auto pOwnerMesh = WORLD.GetComponent<MeshComponent>(comEquipped.owner);
-        if (pOwnerAnimation && pOwnerMesh) {
-            const auto& equipmentLoc = pOwnerAnimation->mSkinnedModelAnimationController->animationSets->equipmentLocations[pEquipment->equipmentType];
-            const auto& equipmentLocalTrans = equipmentLoc.localTransform;
+		auto pOwnerAnimation = WORLD.GetComponent<AnimationComponent>(comEquipped.owner);
+		auto pOwnerMesh = WORLD.GetComponent<MeshComponent>(comEquipped.owner);
+		if (pOwnerAnimation && pOwnerMesh) {
+			const auto& equipmentLoc = pOwnerAnimation->mSkinnedModelAnimationController->animationSets->equipmentLocations[pEquipment->equipmentType];
+			const auto& equipmentLocalTrans = equipmentLoc.localTransform;
 
-            XMStoreFloat4x4(&comEquipped.equippedBoneToRootTransfrom, XMMatrixMultiply(
-                XMLoadFloat4x4(&equipmentLocalTrans),
-                XMLoadFloat4x4(&pOwnerAnimation->mSkinnedModelAnimationController->toRootTransforms[equipmentLoc.referenceBoneIndex])));
-            comEquipped.NumFramesDirty = gNumFrameResources;
-            pEquippedObjMesh->Scale = pOwnerMesh->Scale;
-            pEquippedObjMesh->Rotation = pOwnerMesh->Rotation;
-            pEquippedObjMesh->Translation = pOwnerMesh->Translation;
-            pEquippedObjMesh->NumFramesDirty = gNumFrameResources;
-        }
-    }
+			XMStoreFloat4x4(&comEquipped.equippedBoneToRootTransfrom, XMMatrixMultiply(
+				XMLoadFloat4x4(&equipmentLocalTrans),
+				XMLoadFloat4x4(&pOwnerAnimation->mSkinnedModelAnimationController->toRootTransforms[equipmentLoc.referenceBoneIndex])));
+			comEquipped.NumFramesDirty = gNumFrameResources;
+			pEquippedObjMesh->Scale = pOwnerMesh->Scale;
+			pEquippedObjMesh->Rotation = pOwnerMesh->Rotation;
+			pEquippedObjMesh->Translation = pOwnerMesh->Translation;
+			pEquippedObjMesh->NumFramesDirty = gNumFrameResources;
+		}
+	}
 }
 
 void GameFramework::UpdateMaterialBuffer(float dt)
 {
-    auto currMaterialBuffer = mCurrFrameResource->MaterialBuffer.get();
-    for (auto& e : mMaterials)
-    {
-        // Only update the cbuffer data if the constants have changed.  If the cbuffer
-        // data changes, it needs to be updated for each FrameResource.
-        Material* mat = e.second.get();
-        if (mat->NumFramesDirty > 0)
-        {
-            XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);
+	auto currMaterialBuffer = mCurrFrameResource->MaterialBuffer.get();
+	for (auto& e : mMaterials)
+	{
+		// Only update the cbuffer data if the constants have changed.  If the cbuffer
+		// data changes, it needs to be updated for each FrameResource.
+		Material* mat = e.second.get();
+		if (mat->NumFramesDirty > 0)
+		{
+			XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);
 
-            MaterialData matData;
-            matData.DiffuseAlbedo = mat->DiffuseAlbedo;
-            matData.FresnelR0 = mat->FresnelR0;
-            matData.Roughness = mat->Roughness;
-            XMStoreFloat4x4(&matData.MatTransform, XMMatrixTranspose(matTransform));
-            matData.DiffuseMapIndex = mat->DiffuseSrvHeapIndex;
-            matData.NormalMapIndex = mat->NormalSrvHeapIndex;
+			MaterialData matData;
+			matData.DiffuseAlbedo = mat->DiffuseAlbedo;
+			matData.FresnelR0 = mat->FresnelR0;
+			matData.Roughness = mat->Roughness;
+			XMStoreFloat4x4(&matData.MatTransform, XMMatrixTranspose(matTransform));
+			matData.DiffuseMapIndex = mat->DiffuseSrvHeapIndex;
+			matData.NormalMapIndex = mat->NormalSrvHeapIndex;
 
-            currMaterialBuffer->CopyData(mat->MatCBIndex, matData);
+			currMaterialBuffer->CopyData(mat->MatCBIndex, matData);
 
-            // Next FrameResource need to be updated too.
-            mat->NumFramesDirty--;
-        }
-    }
+			// Next FrameResource need to be updated too.
+			mat->NumFramesDirty--;
+		}
+	}
 }
 
 void GameFramework::UpdateShadowTransform(float dt)
 {
-    // Only the first "main" light casts a shadow.
-    XMVECTOR lightDir = XMLoadFloat3(&mRotatedLightDirections[0]);
-    XMVECTOR lightPos = -2.0f * mSceneBounds.Radius * lightDir;
-    XMVECTOR targetPos = XMLoadFloat3(&mSceneBounds.Center);
-    XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-    XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
+	// Only the first "main" light casts a shadow.
+	XMVECTOR lightDir = XMLoadFloat3(&mRotatedLightDirections[0]);
+	XMVECTOR lightPos = -2.0f * mSceneBounds.Radius * lightDir;
+	XMVECTOR targetPos = XMLoadFloat3(&mSceneBounds.Center);
+	XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
 
-    XMStoreFloat3(&mLightPosW, lightPos);
+	XMStoreFloat3(&mLightPosW, lightPos);
 
-    // Transform bounding sphere to light space.
-    XMFLOAT3 sphereCenterLS;
-    XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
+	// Transform bounding sphere to light space.
+	XMFLOAT3 sphereCenterLS;
+	XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
 
-    // Ortho frustum in light space encloses scene.
-    float l = sphereCenterLS.x - mSceneBounds.Radius;
-    float b = sphereCenterLS.y - mSceneBounds.Radius;
-    float n = sphereCenterLS.z - mSceneBounds.Radius;
-    float r = sphereCenterLS.x + mSceneBounds.Radius;
-    float t = sphereCenterLS.y + mSceneBounds.Radius;
-    float f = sphereCenterLS.z + mSceneBounds.Radius;
+	// Ortho frustum in light space encloses scene.
+	float l = sphereCenterLS.x - mSceneBounds.Radius;
+	float b = sphereCenterLS.y - mSceneBounds.Radius;
+	float n = sphereCenterLS.z - mSceneBounds.Radius;
+	float r = sphereCenterLS.x + mSceneBounds.Radius;
+	float t = sphereCenterLS.y + mSceneBounds.Radius;
+	float f = sphereCenterLS.z + mSceneBounds.Radius;
 
-    mLightNearZ = n;
-    mLightFarZ = f;
-    XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
+	mLightNearZ = n;
+	mLightFarZ = f;
+	XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
 
-    // Transform NDC space [-1,+1]^2 to texture space [0,1]^2
-    XMMATRIX T(
-        0.5f, 0.0f, 0.0f, 0.0f,
-        0.0f, -0.5f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.5f, 0.5f, 0.0f, 1.0f);
+	// Transform NDC space [-1,+1]^2 to texture space [0,1]^2
+	XMMATRIX T(
+		0.5f, 0.0f, 0.0f, 0.0f,
+		0.0f, -0.5f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.5f, 0.5f, 0.0f, 1.0f);
 
-    XMMATRIX S = lightView * lightProj * T;
-    XMStoreFloat4x4(&mLightView, lightView);
-    XMStoreFloat4x4(&mLightProj, lightProj);
-    XMStoreFloat4x4(&mShadowTransform, S);
+	XMMATRIX S = lightView * lightProj * T;
+	XMStoreFloat4x4(&mLightView, lightView);
+	XMStoreFloat4x4(&mLightProj, lightProj);
+	XMStoreFloat4x4(&mShadowTransform, S);
 }
 
 void GameFramework::UpdateMainPassCB(float dt)
 {
-    auto& camera = GetMainCamera();
-    XMMATRIX view = camera.GetView();
-    XMMATRIX proj = camera.GetProj();
+	auto& camera = GetMainCamera();
+	XMMATRIX view = camera.GetView();
+	XMMATRIX proj = camera.GetProj();
 
-    XMMATRIX viewProj = XMMatrixMultiply(view, proj);
-    auto viewVec = XMMatrixDeterminant(view);
-    XMMATRIX invView = XMMatrixInverse(&viewVec, view);
-    auto projVec = XMMatrixDeterminant(proj);
-    XMMATRIX invProj = XMMatrixInverse(&projVec, proj);
-    auto viewProjVec = XMMatrixDeterminant(viewProj);
-    XMMATRIX invViewProj = XMMatrixInverse(&viewProjVec, viewProj);
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	auto viewVec = XMMatrixDeterminant(view);
+	XMMATRIX invView = XMMatrixInverse(&viewVec, view);
+	auto projVec = XMMatrixDeterminant(proj);
+	XMMATRIX invProj = XMMatrixInverse(&projVec, proj);
+	auto viewProjVec = XMMatrixDeterminant(viewProj);
+	XMMATRIX invViewProj = XMMatrixInverse(&viewProjVec, viewProj);
 
-    // Transform NDC space [-1,+1]^2 to texture space [0,1]^2
-    XMMATRIX T(
-        0.5f, 0.0f, 0.0f, 0.0f,
-        0.0f, -0.5f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.5f, 0.5f, 0.0f, 1.0f);
+	// Transform NDC space [-1,+1]^2 to texture space [0,1]^2
+	XMMATRIX T(
+		0.5f, 0.0f, 0.0f, 0.0f,
+		0.0f, -0.5f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.5f, 0.5f, 0.0f, 1.0f);
 
-    XMMATRIX viewProjTex = XMMatrixMultiply(viewProj, T);
-    XMMATRIX shadowTransform = XMLoadFloat4x4(&mShadowTransform);
+	XMMATRIX viewProjTex = XMMatrixMultiply(viewProj, T);
+	XMMATRIX shadowTransform = XMLoadFloat4x4(&mShadowTransform);
 
-    XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
-    XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
-    XMStoreFloat4x4(&mMainPassCB.Proj, XMMatrixTranspose(proj));
-    XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
-    XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
-    XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
-    XMStoreFloat4x4(&mMainPassCB.ViewProjTex, XMMatrixTranspose(viewProjTex));
-    XMStoreFloat4x4(&mMainPassCB.ShadowTransform, XMMatrixTranspose(shadowTransform));
-    mMainPassCB.EyePosW = camera.GetPosition3f();
-    mMainPassCB.RenderTargetSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
-    mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mClientWidth, 1.0f / mClientHeight);
-    mMainPassCB.NearZ = 1.0f;
-    mMainPassCB.FarZ = 1000.0f;
-    mMainPassCB.DeltaTime = dt;
-    mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
-    mMainPassCB.Lights[0].Direction = mRotatedLightDirections[0];
-    mMainPassCB.Lights[0].Strength = { 0.9f, 0.9f, 0.7f };
-    mMainPassCB.Lights[1].Direction = mRotatedLightDirections[1];
-    mMainPassCB.Lights[1].Strength = { 0.4f, 0.4f, 0.4f };
-    mMainPassCB.Lights[2].Direction = mRotatedLightDirections[2];
-    mMainPassCB.Lights[2].Strength = { 0.2f, 0.2f, 0.2f };
+	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
+	XMStoreFloat4x4(&mMainPassCB.Proj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
+	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
+	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+	XMStoreFloat4x4(&mMainPassCB.ViewProjTex, XMMatrixTranspose(viewProjTex));
+	XMStoreFloat4x4(&mMainPassCB.ShadowTransform, XMMatrixTranspose(shadowTransform));
+	mMainPassCB.EyePosW = camera.GetPosition3f();
+	mMainPassCB.RenderTargetSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
+	mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mClientWidth, 1.0f / mClientHeight);
+	mMainPassCB.NearZ = 1.0f;
+	mMainPassCB.FarZ = 1000.0f;
+	mMainPassCB.DeltaTime = dt;
+	mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
+	mMainPassCB.Lights[0].Direction = mRotatedLightDirections[0];
+	mMainPassCB.Lights[0].Strength = { 0.9f, 0.9f, 0.7f };
+	mMainPassCB.Lights[1].Direction = mRotatedLightDirections[1];
+	mMainPassCB.Lights[1].Strength = { 0.4f, 0.4f, 0.4f };
+	mMainPassCB.Lights[2].Direction = mRotatedLightDirections[2];
+	mMainPassCB.Lights[2].Strength = { 0.2f, 0.2f, 0.2f };
 
-    auto currPassCB = mCurrFrameResource->PassCB.get();
-    currPassCB->CopyData(0, mMainPassCB);
+	auto currPassCB = mCurrFrameResource->PassCB.get();
+	currPassCB->CopyData(0, mMainPassCB);
 }
 
 void GameFramework::UpdateShadowPassCB(float dt)
 {
-    XMMATRIX view = XMLoadFloat4x4(&mLightView);
-    XMMATRIX proj = XMLoadFloat4x4(&mLightProj);
+	XMMATRIX view = XMLoadFloat4x4(&mLightView);
+	XMMATRIX proj = XMLoadFloat4x4(&mLightProj);
 
-    XMMATRIX viewProj = XMMatrixMultiply(view, proj);
-    auto viewVec = XMMatrixDeterminant(view);
-    XMMATRIX invView = XMMatrixInverse(&viewVec, view);
-    auto projVec = XMMatrixDeterminant(proj);
-    XMMATRIX invProj = XMMatrixInverse(&projVec, proj);
-    auto viewProjVec = XMMatrixDeterminant(viewProj);
-    XMMATRIX invViewProj = XMMatrixInverse(&viewProjVec, viewProj);
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	auto viewVec = XMMatrixDeterminant(view);
+	XMMATRIX invView = XMMatrixInverse(&viewVec, view);
+	auto projVec = XMMatrixDeterminant(proj);
+	XMMATRIX invProj = XMMatrixInverse(&projVec, proj);
+	auto viewProjVec = XMMatrixDeterminant(viewProj);
+	XMMATRIX invViewProj = XMMatrixInverse(&viewProjVec, viewProj);
 
-    UINT w = mShadowMap->Width();
-    UINT h = mShadowMap->Height();
+	UINT w = mShadowMap->Width();
+	UINT h = mShadowMap->Height();
 
-    XMStoreFloat4x4(&mShadowPassCB.View, XMMatrixTranspose(view));
-    XMStoreFloat4x4(&mShadowPassCB.InvView, XMMatrixTranspose(invView));
-    XMStoreFloat4x4(&mShadowPassCB.Proj, XMMatrixTranspose(proj));
-    XMStoreFloat4x4(&mShadowPassCB.InvProj, XMMatrixTranspose(invProj));
-    XMStoreFloat4x4(&mShadowPassCB.ViewProj, XMMatrixTranspose(viewProj));
-    XMStoreFloat4x4(&mShadowPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
-    mShadowPassCB.EyePosW = mLightPosW;
-    mShadowPassCB.RenderTargetSize = XMFLOAT2((float)w, (float)h);
-    mShadowPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / w, 1.0f / h);
-    mShadowPassCB.NearZ = mLightNearZ;
-    mShadowPassCB.FarZ = mLightFarZ;
+	XMStoreFloat4x4(&mShadowPassCB.View, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&mShadowPassCB.InvView, XMMatrixTranspose(invView));
+	XMStoreFloat4x4(&mShadowPassCB.Proj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&mShadowPassCB.InvProj, XMMatrixTranspose(invProj));
+	XMStoreFloat4x4(&mShadowPassCB.ViewProj, XMMatrixTranspose(viewProj));
+	XMStoreFloat4x4(&mShadowPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+	mShadowPassCB.EyePosW = mLightPosW;
+	mShadowPassCB.RenderTargetSize = XMFLOAT2((float)w, (float)h);
+	mShadowPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / w, 1.0f / h);
+	mShadowPassCB.NearZ = mLightNearZ;
+	mShadowPassCB.FarZ = mLightFarZ;
 
-    auto currPassCB = mCurrFrameResource->PassCB.get();
-    currPassCB->CopyData(1, mShadowPassCB);
+	auto currPassCB = mCurrFrameResource->PassCB.get();
+	currPassCB->CopyData(1, mShadowPassCB);
 }
 
 void GameFramework::UpdateSsaoCB(float dt)
 {
-    SsaoConstants ssaoCB;
+	SsaoConstants ssaoCB;
 
-    auto& camera = GetMainCamera();
-    XMMATRIX P = camera.GetProj();
+	auto& camera = GetMainCamera();
+	XMMATRIX P = camera.GetProj();
 
-    // Transform NDC space [-1,+1]^2 to texture space [0,1]^2
-    XMMATRIX T(
-        0.5f, 0.0f, 0.0f, 0.0f,
-        0.0f, -0.5f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.5f, 0.5f, 0.0f, 1.0f);
+	// Transform NDC space [-1,+1]^2 to texture space [0,1]^2
+	XMMATRIX T(
+		0.5f, 0.0f, 0.0f, 0.0f,
+		0.0f, -0.5f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.5f, 0.5f, 0.0f, 1.0f);
 
-    ssaoCB.Proj = mMainPassCB.Proj;
-    ssaoCB.InvProj = mMainPassCB.InvProj;
-    XMStoreFloat4x4(&ssaoCB.ProjTex, XMMatrixTranspose(P * T));
+	ssaoCB.Proj = mMainPassCB.Proj;
+	ssaoCB.InvProj = mMainPassCB.InvProj;
+	XMStoreFloat4x4(&ssaoCB.ProjTex, XMMatrixTranspose(P * T));
 
-    mSsao->GetOffsetVectors(ssaoCB.OffsetVectors);
+	mSsao->GetOffsetVectors(ssaoCB.OffsetVectors);
 
-    auto blurWeights = mSsao->CalcGaussWeights(2.5f);
-    ssaoCB.BlurWeights[0] = XMFLOAT4(&blurWeights[0]);
-    ssaoCB.BlurWeights[1] = XMFLOAT4(&blurWeights[4]);
-    ssaoCB.BlurWeights[2] = XMFLOAT4(&blurWeights[8]);
+	auto blurWeights = mSsao->CalcGaussWeights(2.5f);
+	ssaoCB.BlurWeights[0] = XMFLOAT4(&blurWeights[0]);
+	ssaoCB.BlurWeights[1] = XMFLOAT4(&blurWeights[4]);
+	ssaoCB.BlurWeights[2] = XMFLOAT4(&blurWeights[8]);
 
-    ssaoCB.InvRenderTargetSize = XMFLOAT2(1.0f / mSsao->SsaoMapWidth(), 1.0f / mSsao->SsaoMapHeight());
+	ssaoCB.InvRenderTargetSize = XMFLOAT2(1.0f / mSsao->SsaoMapWidth(), 1.0f / mSsao->SsaoMapHeight());
 
-    // Coordinates given in view space.
-    ssaoCB.OcclusionRadius = 0.5f;
-    ssaoCB.OcclusionFadeStart = 0.2f;
-    ssaoCB.OcclusionFadeEnd = 2.0f;
-    ssaoCB.SurfaceEpsilon = 0.05f;
+	// Coordinates given in view space.
+	ssaoCB.OcclusionRadius = 0.5f;
+	ssaoCB.OcclusionFadeStart = 0.2f;
+	ssaoCB.OcclusionFadeEnd = 2.0f;
+	ssaoCB.SurfaceEpsilon = 0.05f;
 
-    auto currSsaoCB = mCurrFrameResource->SsaoCB.get();
-    currSsaoCB->CopyData(0, ssaoCB);
+	auto currSsaoCB = mCurrFrameResource->SsaoCB.get();
+	currSsaoCB->CopyData(0, ssaoCB);
 }
 
 void GameFramework::LoadTextures()
 {
-    std::vector<std::string> texNames =
-    {
-        "bricksDiffuseMap",
-        "bricksNormalMap",
-        "tileDiffuseMap",
-        "tileNormalMap",
-        "defaultDiffuseMap",
-        "defaultNormalMap",
-        "skyCubeMap"
-    };
+	std::vector<std::string> texNames =
+	{
+		"bricksDiffuseMap",
+		"bricksNormalMap",
+		"tileDiffuseMap",
+		"tileNormalMap",
+		"defaultDiffuseMap",
+		"defaultNormalMap",
+		"skyCubeMap"
+	};
 
-    std::vector<std::wstring> texFilenames =
-    {
-        L"Textures/bricks2.dds",
-        L"Textures/bricks2_nmap.dds",
-        L"Textures/tile.dds",
-        L"Textures/tile_nmap.dds",
-        L"Textures/white1x1.dds",
-        L"Textures/default_nmap.dds",
-        L"Textures/desertcube1024.dds"
-    };
+	std::vector<std::wstring> texFilenames =
+	{
+		L"Textures/bricks2.dds",
+		L"Textures/bricks2_nmap.dds",
+		L"Textures/tile.dds",
+		L"Textures/tile_nmap.dds",
+		L"Textures/white1x1.dds",
+		L"Textures/default_nmap.dds",
+		L"Textures/desertcube1024.dds"
+	};
 
-    // Add skinned model textures to list so we can reference by name later.
-    for (UINT i = 0; i < mSkinnedMats.size(); ++i)
-    {
-        std::string diffuseName = mSkinnedMats[i].DiffuseMapName;
-        std::string normalName = mSkinnedMats[i].NormalMapName;
+	// Add skinned model textures to list so we can reference by name later.
+	for (UINT i = 0; i < mSkinnedMats.size(); ++i)
+	{
+		std::string diffuseName = mSkinnedMats[i].DiffuseMapName;
+		std::string normalName = mSkinnedMats[i].NormalMapName;
 
-        std::wstring diffuseFilename = L"Textures/" + AnsiToWString(diffuseName);
-        std::wstring normalFilename = L"Textures/" + AnsiToWString(normalName);
+		std::wstring diffuseFilename = L"Textures/" + AnsiToWString(diffuseName);
+		std::wstring normalFilename = L"Textures/" + AnsiToWString(normalName);
 
-        // strip off extension
-        diffuseName = diffuseName.substr(0, diffuseName.find_last_of("."));
-        normalName = normalName.substr(0, normalName.find_last_of("."));
+		// strip off extension
+		diffuseName = diffuseName.substr(0, diffuseName.find_last_of("."));
+		normalName = normalName.substr(0, normalName.find_last_of("."));
 
-        mSkinnedTextureNames.push_back(diffuseName);
-        texNames.push_back(diffuseName);
-        texFilenames.push_back(diffuseFilename);
+		mSkinnedTextureNames.push_back(diffuseName);
+		texNames.push_back(diffuseName);
+		texFilenames.push_back(diffuseFilename);
 
-        mSkinnedTextureNames.push_back(normalName);
-        texNames.push_back(normalName);
-        texFilenames.push_back(normalFilename);
-    }
+		mSkinnedTextureNames.push_back(normalName);
+		texNames.push_back(normalName);
+		texFilenames.push_back(normalFilename);
+	}
 
-    for (int i = 0; i < (int)texNames.size(); ++i)
-    {
-        // Don't create duplicates.
-        if (mTextures.find(texNames[i]) == std::end(mTextures))
-        {
-            auto texMap = std::make_unique<Texture>();
-            texMap->Name = texNames[i];
-            texMap->Filename = texFilenames[i];
-            ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-                mCommandList.Get(), texMap->Filename.c_str(),
-                texMap->Resource, texMap->UploadHeap));
+	for (int i = 0; i < (int)texNames.size(); ++i)
+	{
+		// Don't create duplicates.
+		if (mTextures.find(texNames[i]) == std::end(mTextures))
+		{
+			auto texMap = std::make_unique<Texture>();
+			texMap->Name = texNames[i];
+			texMap->Filename = texFilenames[i];
+			ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
+				mCommandList.Get(), texMap->Filename.c_str(),
+				texMap->Resource, texMap->UploadHeap));
 
-            mTextures[texMap->Name] = std::move(texMap);
-        }
-    }
+			mTextures[texMap->Name] = std::move(texMap);
+		}
+	}
 }
 
 void GameFramework::BuildRootSignature()
 {
-    CD3DX12_DESCRIPTOR_RANGE texTable0;
-    texTable0.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0);
+	CD3DX12_DESCRIPTOR_RANGE texTable0;
+	texTable0.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0);
 
-    CD3DX12_DESCRIPTOR_RANGE texTable1;
-    texTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 48, 3, 0);
+	CD3DX12_DESCRIPTOR_RANGE texTable1;
+	texTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 48, 3, 0);
 
-    // Root parameter can be a table, root descriptor or root constants.
-    CD3DX12_ROOT_PARAMETER slotRootParameter[7];
+	// Root parameter can be a table, root descriptor or root constants.
+	CD3DX12_ROOT_PARAMETER slotRootParameter[7];
 
-    // Perfomance TIP: Order from most frequent to least frequent.
-    slotRootParameter[0].InitAsConstantBufferView(0);
-    slotRootParameter[1].InitAsConstantBufferView(1);
-    slotRootParameter[2].InitAsConstantBufferView(2);
-    slotRootParameter[3].InitAsShaderResourceView(0, 1);
-    slotRootParameter[4].InitAsDescriptorTable(1, &texTable0, D3D12_SHADER_VISIBILITY_PIXEL);
-    slotRootParameter[5].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_PIXEL);
-    slotRootParameter[6].InitAsConstantBufferView(3);
+	// Perfomance TIP: Order from most frequent to least frequent.
+	slotRootParameter[0].InitAsConstantBufferView(0);
+	slotRootParameter[1].InitAsConstantBufferView(1);
+	slotRootParameter[2].InitAsConstantBufferView(2);
+	slotRootParameter[3].InitAsShaderResourceView(0, 1);
+	slotRootParameter[4].InitAsDescriptorTable(1, &texTable0, D3D12_SHADER_VISIBILITY_PIXEL);
+	slotRootParameter[5].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_PIXEL);
+	slotRootParameter[6].InitAsConstantBufferView(3);
 
-    auto staticSamplers = GetStaticSamplers();
+	auto staticSamplers = GetStaticSamplers();
 
-    // A root signature is an array of root parameters.
-    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(7, slotRootParameter,
-        (UINT)staticSamplers.size(), staticSamplers.data(),
-        D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	// A root signature is an array of root parameters.
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(7, slotRootParameter,
+		(UINT)staticSamplers.size(), staticSamplers.data(),
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-    // create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
-    ComPtr<ID3DBlob> serializedRootSig = nullptr;
-    ComPtr<ID3DBlob> errorBlob = nullptr;
-    HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-        serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+	// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+	ComPtr<ID3DBlob> serializedRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
 
-    if (errorBlob != nullptr)
-    {
-        ::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
-    }
-    ThrowIfFailed(hr);
+	if (errorBlob != nullptr)
+	{
+		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(hr);
 
-    ThrowIfFailed(md3dDevice->CreateRootSignature(
-        0,
-        serializedRootSig->GetBufferPointer(),
-        serializedRootSig->GetBufferSize(),
-        IID_PPV_ARGS(mRootSignature.GetAddressOf())));
+	ThrowIfFailed(md3dDevice->CreateRootSignature(
+		0,
+		serializedRootSig->GetBufferPointer(),
+		serializedRootSig->GetBufferSize(),
+		IID_PPV_ARGS(mRootSignature.GetAddressOf())));
 }
 
 void GameFramework::BuildSsaoRootSignature()
 {
-    CD3DX12_DESCRIPTOR_RANGE texTable0;
-    texTable0.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0);
+	CD3DX12_DESCRIPTOR_RANGE texTable0;
+	texTable0.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0);
 
-    CD3DX12_DESCRIPTOR_RANGE texTable1;
-    texTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0);
+	CD3DX12_DESCRIPTOR_RANGE texTable1;
+	texTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0);
 
-    // Root parameter can be a table, root descriptor or root constants.
-    CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+	// Root parameter can be a table, root descriptor or root constants.
+	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
-    // Perfomance TIP: Order from most frequent to least frequent.
-    slotRootParameter[0].InitAsConstantBufferView(0);
-    slotRootParameter[1].InitAsConstants(1, 1);
-    slotRootParameter[2].InitAsDescriptorTable(1, &texTable0, D3D12_SHADER_VISIBILITY_PIXEL);
-    slotRootParameter[3].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_PIXEL);
+	// Perfomance TIP: Order from most frequent to least frequent.
+	slotRootParameter[0].InitAsConstantBufferView(0);
+	slotRootParameter[1].InitAsConstants(1, 1);
+	slotRootParameter[2].InitAsDescriptorTable(1, &texTable0, D3D12_SHADER_VISIBILITY_PIXEL);
+	slotRootParameter[3].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_PIXEL);
 
-    const CD3DX12_STATIC_SAMPLER_DESC pointClamp(
-        0, // shaderRegister
-        D3D12_FILTER_MIN_MAG_MIP_POINT, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
+	const CD3DX12_STATIC_SAMPLER_DESC pointClamp(
+		0, // shaderRegister
+		D3D12_FILTER_MIN_MAG_MIP_POINT, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
 
-    const CD3DX12_STATIC_SAMPLER_DESC linearClamp(
-        1, // shaderRegister
-        D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
+	const CD3DX12_STATIC_SAMPLER_DESC linearClamp(
+		1, // shaderRegister
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
 
-    const CD3DX12_STATIC_SAMPLER_DESC depthMapSam(
-        2, // shaderRegister
-        D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressW
-        0.0f,
-        0,
-        D3D12_COMPARISON_FUNC_LESS_EQUAL,
-        D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE);
+	const CD3DX12_STATIC_SAMPLER_DESC depthMapSam(
+		2, // shaderRegister
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressW
+		0.0f,
+		0,
+		D3D12_COMPARISON_FUNC_LESS_EQUAL,
+		D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE);
 
-    const CD3DX12_STATIC_SAMPLER_DESC linearWrap(
-        3, // shaderRegister
-        D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
+	const CD3DX12_STATIC_SAMPLER_DESC linearWrap(
+		3, // shaderRegister
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
 
-    std::array<CD3DX12_STATIC_SAMPLER_DESC, 4> staticSamplers =
-    {
-        pointClamp, linearClamp, depthMapSam, linearWrap
-    };
+	std::array<CD3DX12_STATIC_SAMPLER_DESC, 4> staticSamplers =
+	{
+		pointClamp, linearClamp, depthMapSam, linearWrap
+	};
 
-    // A root signature is an array of root parameters.
-    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
-        (UINT)staticSamplers.size(), staticSamplers.data(),
-        D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	// A root signature is an array of root parameters.
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
+		(UINT)staticSamplers.size(), staticSamplers.data(),
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-    // create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
-    ComPtr<ID3DBlob> serializedRootSig = nullptr;
-    ComPtr<ID3DBlob> errorBlob = nullptr;
-    HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-        serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+	// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+	ComPtr<ID3DBlob> serializedRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
 
-    if (errorBlob != nullptr)
-    {
-        ::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
-    }
-    ThrowIfFailed(hr);
+	if (errorBlob != nullptr)
+	{
+		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(hr);
 
-    ThrowIfFailed(md3dDevice->CreateRootSignature(
-        0,
-        serializedRootSig->GetBufferPointer(),
-        serializedRootSig->GetBufferSize(),
-        IID_PPV_ARGS(mSsaoRootSignature.GetAddressOf())));
+	ThrowIfFailed(md3dDevice->CreateRootSignature(
+		0,
+		serializedRootSig->GetBufferPointer(),
+		serializedRootSig->GetBufferSize(),
+		IID_PPV_ARGS(mSsaoRootSignature.GetAddressOf())));
 }
 
 void GameFramework::BuildDescriptorHeaps()
 {
-    //
-    // Create the SRV heap.
-    //
-    D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-    srvHeapDesc.NumDescriptors = 64;
-    srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
+	//
+	// Create the SRV heap.
+	//
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	srvHeapDesc.NumDescriptors = 64;
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
 
-    //
-    // Fill out the heap with actual descriptors.
-    //
-    CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	//
+	// Fill out the heap with actual descriptors.
+	//
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
-    std::vector<ComPtr<ID3D12Resource>> tex2DList =
-    {
-        mTextures["bricksDiffuseMap"]->Resource,
-        mTextures["bricksNormalMap"]->Resource,
-        mTextures["tileDiffuseMap"]->Resource,
-        mTextures["tileNormalMap"]->Resource,
-        mTextures["defaultDiffuseMap"]->Resource,
-        mTextures["defaultNormalMap"]->Resource
-    };
+	std::vector<ComPtr<ID3D12Resource>> tex2DList =
+	{
+		mTextures["bricksDiffuseMap"]->Resource,
+		mTextures["bricksNormalMap"]->Resource,
+		mTextures["tileDiffuseMap"]->Resource,
+		mTextures["tileNormalMap"]->Resource,
+		mTextures["defaultDiffuseMap"]->Resource,
+		mTextures["defaultNormalMap"]->Resource
+	};
 
-    mSkinnedSrvHeapStart = (UINT)tex2DList.size();
+	mSkinnedSrvHeapStart = (UINT)tex2DList.size();
 
-    for (UINT i = 0; i < (UINT)mSkinnedTextureNames.size(); ++i)
-    {
-        auto texResource = mTextures[mSkinnedTextureNames[i]]->Resource;
-        assert(texResource != nullptr);
-        tex2DList.push_back(texResource);
-    }
+	for (UINT i = 0; i < (UINT)mSkinnedTextureNames.size(); ++i)
+	{
+		auto texResource = mTextures[mSkinnedTextureNames[i]]->Resource;
+		assert(texResource != nullptr);
+		tex2DList.push_back(texResource);
+	}
 
 
-    auto skyCubeMap = mTextures["skyCubeMap"]->Resource;
+	auto skyCubeMap = mTextures["skyCubeMap"]->Resource;
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
-    for (UINT i = 0; i < (UINT)tex2DList.size(); ++i)
-    {
-        srvDesc.Format = tex2DList[i]->GetDesc().Format;
-        srvDesc.Texture2D.MipLevels = tex2DList[i]->GetDesc().MipLevels;
-        md3dDevice->CreateShaderResourceView(tex2DList[i].Get(), &srvDesc, hDescriptor);
+	for (UINT i = 0; i < (UINT)tex2DList.size(); ++i)
+	{
+		srvDesc.Format = tex2DList[i]->GetDesc().Format;
+		srvDesc.Texture2D.MipLevels = tex2DList[i]->GetDesc().MipLevels;
+		md3dDevice->CreateShaderResourceView(tex2DList[i].Get(), &srvDesc, hDescriptor);
 
-        // next descriptor
-        hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
-    }
+		// next descriptor
+		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	}
 
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-    srvDesc.TextureCube.MostDetailedMip = 0;
-    srvDesc.TextureCube.MipLevels = skyCubeMap->GetDesc().MipLevels;
-    srvDesc.TextureCube.ResourceMinLODClamp = 0.0f;
-    srvDesc.Format = skyCubeMap->GetDesc().Format;
-    md3dDevice->CreateShaderResourceView(skyCubeMap.Get(), &srvDesc, hDescriptor);
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+	srvDesc.TextureCube.MostDetailedMip = 0;
+	srvDesc.TextureCube.MipLevels = skyCubeMap->GetDesc().MipLevels;
+	srvDesc.TextureCube.ResourceMinLODClamp = 0.0f;
+	srvDesc.Format = skyCubeMap->GetDesc().Format;
+	md3dDevice->CreateShaderResourceView(skyCubeMap.Get(), &srvDesc, hDescriptor);
 
-    auto hSkyObj = WORLD.AddObject();
-    SkyComponent comSky = SkyComponent(hSkyObj);
-    comSky.mSkyTexHeapIndex = (UINT)tex2DList.size();
-    WORLD.AttachComponent(hSkyObj, move(comSky));
+	auto hSkyObj = WORLD.AddObject();
+	SkyComponent comSky = SkyComponent(hSkyObj);
+	comSky.mSkyTexHeapIndex = (UINT)tex2DList.size();
+	WORLD.AttachComponent(hSkyObj, move(comSky));
 
-    mShadowMapHeapIndex = (UINT)tex2DList.size() + 1;
-    mSsaoHeapIndexStart = mShadowMapHeapIndex + 1;
-    mSsaoAmbientMapIndex = mSsaoHeapIndexStart + 3;
-    mNullCubeSrvIndex = mSsaoHeapIndexStart + 5;
-    mNullTexSrvIndex1 = mNullCubeSrvIndex + 1;
-    mNullTexSrvIndex2 = mNullTexSrvIndex1 + 1;
+	mShadowMapHeapIndex = (UINT)tex2DList.size() + 1;
+	mSsaoHeapIndexStart = mShadowMapHeapIndex + 1;
+	mSsaoAmbientMapIndex = mSsaoHeapIndexStart + 3;
+	mNullCubeSrvIndex = mSsaoHeapIndexStart + 5;
+	mNullTexSrvIndex1 = mNullCubeSrvIndex + 1;
+	mNullTexSrvIndex2 = mNullTexSrvIndex1 + 1;
 
-    auto nullSrv = GetCpuSrv(mNullCubeSrvIndex);
-    mNullSrv = GetGpuSrv(mNullCubeSrvIndex);
+	auto nullSrv = GetCpuSrv(mNullCubeSrvIndex);
+	mNullSrv = GetGpuSrv(mNullCubeSrvIndex);
 
-    md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, nullSrv);
-    nullSrv.Offset(1, mCbvSrvUavDescriptorSize);
+	md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, nullSrv);
+	nullSrv.Offset(1, mCbvSrvUavDescriptorSize);
 
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.MipLevels = 1;
-    srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-    md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, nullSrv);
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = 1;
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+	md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, nullSrv);
 
-    nullSrv.Offset(1, mCbvSrvUavDescriptorSize);
-    md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, nullSrv);
+	nullSrv.Offset(1, mCbvSrvUavDescriptorSize);
+	md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, nullSrv);
 
-    mShadowMap->BuildDescriptors(
-        GetCpuSrv(mShadowMapHeapIndex),
-        GetGpuSrv(mShadowMapHeapIndex),
-        GetDsv(1));
+	mShadowMap->BuildDescriptors(
+		GetCpuSrv(mShadowMapHeapIndex),
+		GetGpuSrv(mShadowMapHeapIndex),
+		GetDsv(1));
 
-    mSsao->BuildDescriptors(
-        mDepthStencilBuffer.Get(),
-        GetCpuSrv(mSsaoHeapIndexStart),
-        GetGpuSrv(mSsaoHeapIndexStart),
-        GetRtv(SwapChainBufferCount),
-        mCbvSrvUavDescriptorSize,
-        mRtvDescriptorSize);
+	mSsao->BuildDescriptors(
+		mDepthStencilBuffer.Get(),
+		GetCpuSrv(mSsaoHeapIndexStart),
+		GetGpuSrv(mSsaoHeapIndexStart),
+		GetRtv(SwapChainBufferCount),
+		mCbvSrvUavDescriptorSize,
+		mRtvDescriptorSize);
 }
 
 void GameFramework::BuildShadersAndInputLayout()
 {
-    const D3D_SHADER_MACRO alphaTestDefines[] =
-    {
-        "ALPHA_TEST", "1",
-        NULL, NULL
-    };
+	const D3D_SHADER_MACRO alphaTestDefines[] =
+	{
+		"ALPHA_TEST", "1",
+		NULL, NULL
+	};
 
-    const D3D_SHADER_MACRO skinnedDefines[] =
-    {
-        "SKINNED", "1",
-        NULL, NULL
-    };
+	const D3D_SHADER_MACRO skinnedDefines[] =
+	{
+		"SKINNED", "1",
+		NULL, NULL
+	};
 
-    const D3D_SHADER_MACRO equippedDefines[] =
-    {
-        "EQUIPPED", "1",
-        NULL, NULL
-    };
+	const D3D_SHADER_MACRO equippedDefines[] =
+	{
+		"EQUIPPED", "1",
+		NULL, NULL
+	};
 
-    mShaders["standardVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", nullptr, "VS", "vs_5_1");
-    mShaders["skinnedVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "VS", "vs_5_1");
-    mShaders["equippedVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", equippedDefines, "VS", "vs_5_1");
-    mShaders["opaquePS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", nullptr, "PS", "ps_5_1");
-    mShaders["skinnedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "PS_Simple", "ps_5_1");
-    mShaders["equippedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", equippedDefines, "PS_Simple", "ps_5_1");
+	mShaders["standardVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["skinnedVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "VS", "vs_5_1");
+	mShaders["equippedVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", equippedDefines, "VS", "vs_5_1");
+	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["skinnedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", skinnedDefines, "PS_Simple", "ps_5_1");
+	mShaders["equippedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Default.hlsl", equippedDefines, "PS_Simple", "ps_5_1");
 
-    mShaders["shadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", nullptr, "VS", "vs_5_1");
-    mShaders["skinnedShadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", skinnedDefines, "VS", "vs_5_1");
-    mShaders["equippedShadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", equippedDefines, "VS", "vs_5_1");
-    mShaders["shadowOpaquePS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", nullptr, "PS", "ps_5_1");
-    mShaders["shadowAlphaTestedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", alphaTestDefines, "PS", "ps_5_1");
+	mShaders["shadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["skinnedShadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", skinnedDefines, "VS", "vs_5_1");
+	mShaders["equippedShadowVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", equippedDefines, "VS", "vs_5_1");
+	mShaders["shadowOpaquePS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["shadowAlphaTestedPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Shadows.hlsl", alphaTestDefines, "PS", "ps_5_1");
 
-    mShaders["debugVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\ShadowDebug.hlsl", nullptr, "VS", "vs_5_1");
-    mShaders["debugPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\ShadowDebug.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["debugVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\ShadowDebug.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["debugPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\ShadowDebug.hlsl", nullptr, "PS", "ps_5_1");
 
-    mShaders["drawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", nullptr, "VS", "vs_5_1");
-    mShaders["skinnedDrawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", skinnedDefines, "VS", "vs_5_1");
-    mShaders["equippedDrawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", equippedDefines, "VS", "vs_5_1");
-    mShaders["drawNormalsPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["drawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["skinnedDrawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", skinnedDefines, "VS", "vs_5_1");
+	mShaders["equippedDrawNormalsVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", equippedDefines, "VS", "vs_5_1");
+	mShaders["drawNormalsPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawNormals.hlsl", nullptr, "PS", "ps_5_1");
 
-    mShaders["ssaoVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Ssao.hlsl", nullptr, "VS", "vs_5_1");
-    mShaders["ssaoPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Ssao.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["ssaoVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Ssao.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["ssaoPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Ssao.hlsl", nullptr, "PS", "ps_5_1");
 
-    mShaders["ssaoBlurVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\SsaoBlur.hlsl", nullptr, "VS", "vs_5_1");
-    mShaders["ssaoBlurPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\SsaoBlur.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["ssaoBlurVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\SsaoBlur.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["ssaoBlurPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\SsaoBlur.hlsl", nullptr, "PS", "ps_5_1");
 
-    mShaders["skyVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Sky.hlsl", nullptr, "VS", "vs_5_1");
-    mShaders["skyPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Sky.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["skyVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Sky.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["skyPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Sky.hlsl", nullptr, "PS", "ps_5_1");
 
-    mInputLayout =
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-    };
+	mInputLayout =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	};
 
-    mSkinnedInputLayout =
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "WEIGHTS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BONEINDICES", 0, DXGI_FORMAT_R8G8B8A8_UINT, 0, 56, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-    };
+	mSkinnedInputLayout =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "WEIGHTS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "BONEINDICES", 0, DXGI_FORMAT_R8G8B8A8_UINT, 0, 56, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
 }
 
 void GameFramework::BuildShapeGeometry()
 {
-    GeometryGenerator geoGen;
-    GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
-    GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 30.0f, 60, 40);
-    GeometryGenerator::MeshData sphere = geoGen.CreateSphere(0.5f, 20, 20);
-    GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
-    GeometryGenerator::MeshData quad = geoGen.CreateQuad(0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
+	GeometryGenerator geoGen;
+	GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
+	GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 30.0f, 60, 40);
+	GeometryGenerator::MeshData sphere = geoGen.CreateSphere(0.5f, 20, 20);
+	GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
+	GeometryGenerator::MeshData quad = geoGen.CreateQuad(0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
 
-    //
-    // We are concatenating all the geometry into one big vertex/index buffer.  So
-    // define the regions in the buffer each submesh covers.
-    //
+	//
+	// We are concatenating all the geometry into one big vertex/index buffer.  So
+	// define the regions in the buffer each submesh covers.
+	//
 
-    // Cache the vertex offsets to each object in the concatenated vertex buffer.
-    UINT boxVertexOffset = 0;
-    UINT gridVertexOffset = (UINT)box.Vertices.size();
-    UINT sphereVertexOffset = gridVertexOffset + (UINT)grid.Vertices.size();
-    UINT cylinderVertexOffset = sphereVertexOffset + (UINT)sphere.Vertices.size();
-    UINT quadVertexOffset = cylinderVertexOffset + (UINT)cylinder.Vertices.size();
+	// Cache the vertex offsets to each object in the concatenated vertex buffer.
+	UINT boxVertexOffset = 0;
+	UINT gridVertexOffset = (UINT)box.Vertices.size();
+	UINT sphereVertexOffset = gridVertexOffset + (UINT)grid.Vertices.size();
+	UINT cylinderVertexOffset = sphereVertexOffset + (UINT)sphere.Vertices.size();
+	UINT quadVertexOffset = cylinderVertexOffset + (UINT)cylinder.Vertices.size();
 
-    // Cache the starting index for each object in the concatenated index buffer.
-    UINT boxIndexOffset = 0;
-    UINT gridIndexOffset = (UINT)box.Indices32.size();
-    UINT sphereIndexOffset = gridIndexOffset + (UINT)grid.Indices32.size();
-    UINT cylinderIndexOffset = sphereIndexOffset + (UINT)sphere.Indices32.size();
-    UINT quadIndexOffset = cylinderIndexOffset + (UINT)cylinder.Indices32.size();
+	// Cache the starting index for each object in the concatenated index buffer.
+	UINT boxIndexOffset = 0;
+	UINT gridIndexOffset = (UINT)box.Indices32.size();
+	UINT sphereIndexOffset = gridIndexOffset + (UINT)grid.Indices32.size();
+	UINT cylinderIndexOffset = sphereIndexOffset + (UINT)sphere.Indices32.size();
+	UINT quadIndexOffset = cylinderIndexOffset + (UINT)cylinder.Indices32.size();
 
-    SubmeshGeometry boxSubmesh;
-    boxSubmesh.IndexCount = (UINT)box.Indices32.size();
-    boxSubmesh.StartIndexLocation = boxIndexOffset;
-    boxSubmesh.BaseVertexLocation = boxVertexOffset;
+	SubmeshGeometry boxSubmesh;
+	boxSubmesh.IndexCount = (UINT)box.Indices32.size();
+	boxSubmesh.StartIndexLocation = boxIndexOffset;
+	boxSubmesh.BaseVertexLocation = boxVertexOffset;
 
-    SubmeshGeometry gridSubmesh;
-    gridSubmesh.IndexCount = (UINT)grid.Indices32.size();
-    gridSubmesh.StartIndexLocation = gridIndexOffset;
-    gridSubmesh.BaseVertexLocation = gridVertexOffset;
+	SubmeshGeometry gridSubmesh;
+	gridSubmesh.IndexCount = (UINT)grid.Indices32.size();
+	gridSubmesh.StartIndexLocation = gridIndexOffset;
+	gridSubmesh.BaseVertexLocation = gridVertexOffset;
 
-    SubmeshGeometry sphereSubmesh;
-    sphereSubmesh.IndexCount = (UINT)sphere.Indices32.size();
-    sphereSubmesh.StartIndexLocation = sphereIndexOffset;
-    sphereSubmesh.BaseVertexLocation = sphereVertexOffset;
+	SubmeshGeometry sphereSubmesh;
+	sphereSubmesh.IndexCount = (UINT)sphere.Indices32.size();
+	sphereSubmesh.StartIndexLocation = sphereIndexOffset;
+	sphereSubmesh.BaseVertexLocation = sphereVertexOffset;
 
-    SubmeshGeometry cylinderSubmesh;
-    cylinderSubmesh.IndexCount = (UINT)cylinder.Indices32.size();
-    cylinderSubmesh.StartIndexLocation = cylinderIndexOffset;
-    cylinderSubmesh.BaseVertexLocation = cylinderVertexOffset;
+	SubmeshGeometry cylinderSubmesh;
+	cylinderSubmesh.IndexCount = (UINT)cylinder.Indices32.size();
+	cylinderSubmesh.StartIndexLocation = cylinderIndexOffset;
+	cylinderSubmesh.BaseVertexLocation = cylinderVertexOffset;
 
-    SubmeshGeometry quadSubmesh;
-    quadSubmesh.IndexCount = (UINT)quad.Indices32.size();
-    quadSubmesh.StartIndexLocation = quadIndexOffset;
-    quadSubmesh.BaseVertexLocation = quadVertexOffset;
+	SubmeshGeometry quadSubmesh;
+	quadSubmesh.IndexCount = (UINT)quad.Indices32.size();
+	quadSubmesh.StartIndexLocation = quadIndexOffset;
+	quadSubmesh.BaseVertexLocation = quadVertexOffset;
 
-    //
-    // Extract the vertex elements we are interested in and pack the
-    // vertices of all the meshes into one vertex buffer.
-    //
+	//
+	// Extract the vertex elements we are interested in and pack the
+	// vertices of all the meshes into one vertex buffer.
+	//
 
-    auto totalVertexCount =
-        box.Vertices.size() +
-        grid.Vertices.size() +
-        sphere.Vertices.size() +
-        cylinder.Vertices.size() +
-        quad.Vertices.size();
+	auto totalVertexCount =
+		box.Vertices.size() +
+		grid.Vertices.size() +
+		sphere.Vertices.size() +
+		cylinder.Vertices.size() +
+		quad.Vertices.size();
 
-    std::vector<Vertex> vertices(totalVertexCount);
+	std::vector<Vertex> vertices(totalVertexCount);
 
-    UINT k = 0;
-    for (size_t i = 0; i < box.Vertices.size(); ++i, ++k)
-    {
-        vertices[k].Pos = box.Vertices[i].Position;
-        vertices[k].Normal = box.Vertices[i].Normal;
-        vertices[k].TexC = box.Vertices[i].TexC;
-        vertices[k].TangentU = box.Vertices[i].TangentU;
-    }
+	UINT k = 0;
+	for (size_t i = 0; i < box.Vertices.size(); ++i, ++k)
+	{
+		vertices[k].Pos = box.Vertices[i].Position;
+		vertices[k].Normal = box.Vertices[i].Normal;
+		vertices[k].TexC = box.Vertices[i].TexC;
+		vertices[k].TangentU = box.Vertices[i].TangentU;
+	}
 
-    for (size_t i = 0; i < grid.Vertices.size(); ++i, ++k)
-    {
-        vertices[k].Pos = grid.Vertices[i].Position;
-        vertices[k].Normal = grid.Vertices[i].Normal;
-        vertices[k].TexC = grid.Vertices[i].TexC;
-        vertices[k].TangentU = grid.Vertices[i].TangentU;
-    }
+	for (size_t i = 0; i < grid.Vertices.size(); ++i, ++k)
+	{
+		vertices[k].Pos = grid.Vertices[i].Position;
+		vertices[k].Normal = grid.Vertices[i].Normal;
+		vertices[k].TexC = grid.Vertices[i].TexC;
+		vertices[k].TangentU = grid.Vertices[i].TangentU;
+	}
 
-    for (size_t i = 0; i < sphere.Vertices.size(); ++i, ++k)
-    {
-        vertices[k].Pos = sphere.Vertices[i].Position;
-        vertices[k].Normal = sphere.Vertices[i].Normal;
-        vertices[k].TexC = sphere.Vertices[i].TexC;
-        vertices[k].TangentU = sphere.Vertices[i].TangentU;
-    }
+	for (size_t i = 0; i < sphere.Vertices.size(); ++i, ++k)
+	{
+		vertices[k].Pos = sphere.Vertices[i].Position;
+		vertices[k].Normal = sphere.Vertices[i].Normal;
+		vertices[k].TexC = sphere.Vertices[i].TexC;
+		vertices[k].TangentU = sphere.Vertices[i].TangentU;
+	}
 
-    for (size_t i = 0; i < cylinder.Vertices.size(); ++i, ++k)
-    {
-        vertices[k].Pos = cylinder.Vertices[i].Position;
-        vertices[k].Normal = cylinder.Vertices[i].Normal;
-        vertices[k].TexC = cylinder.Vertices[i].TexC;
-        vertices[k].TangentU = cylinder.Vertices[i].TangentU;
-    }
+	for (size_t i = 0; i < cylinder.Vertices.size(); ++i, ++k)
+	{
+		vertices[k].Pos = cylinder.Vertices[i].Position;
+		vertices[k].Normal = cylinder.Vertices[i].Normal;
+		vertices[k].TexC = cylinder.Vertices[i].TexC;
+		vertices[k].TangentU = cylinder.Vertices[i].TangentU;
+	}
 
-    for (int i = 0; i < quad.Vertices.size(); ++i, ++k)
-    {
-        vertices[k].Pos = quad.Vertices[i].Position;
-        vertices[k].Normal = quad.Vertices[i].Normal;
-        vertices[k].TexC = quad.Vertices[i].TexC;
-        vertices[k].TangentU = quad.Vertices[i].TangentU;
-    }
+	for (int i = 0; i < quad.Vertices.size(); ++i, ++k)
+	{
+		vertices[k].Pos = quad.Vertices[i].Position;
+		vertices[k].Normal = quad.Vertices[i].Normal;
+		vertices[k].TexC = quad.Vertices[i].TexC;
+		vertices[k].TangentU = quad.Vertices[i].TangentU;
+	}
 
-    std::vector<std::uint16_t> indices;
-    indices.insert(indices.end(), std::begin(box.GetIndices16()), std::end(box.GetIndices16()));
-    indices.insert(indices.end(), std::begin(grid.GetIndices16()), std::end(grid.GetIndices16()));
-    indices.insert(indices.end(), std::begin(sphere.GetIndices16()), std::end(sphere.GetIndices16()));
-    indices.insert(indices.end(), std::begin(cylinder.GetIndices16()), std::end(cylinder.GetIndices16()));
-    indices.insert(indices.end(), std::begin(quad.GetIndices16()), std::end(quad.GetIndices16()));
+	std::vector<std::uint16_t> indices;
+	indices.insert(indices.end(), std::begin(box.GetIndices16()), std::end(box.GetIndices16()));
+	indices.insert(indices.end(), std::begin(grid.GetIndices16()), std::end(grid.GetIndices16()));
+	indices.insert(indices.end(), std::begin(sphere.GetIndices16()), std::end(sphere.GetIndices16()));
+	indices.insert(indices.end(), std::begin(cylinder.GetIndices16()), std::end(cylinder.GetIndices16()));
+	indices.insert(indices.end(), std::begin(quad.GetIndices16()), std::end(quad.GetIndices16()));
 
-    const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-    const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-    auto geo = std::make_unique<MeshGeometry>();
-    geo->Name = "shapeGeo";
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = "shapeGeo";
 
-    ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-    CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
-    ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-    CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
-    geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-        mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
 
-    geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-        mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
 
-    geo->VertexByteStride = sizeof(Vertex);
-    geo->VertexBufferByteSize = vbByteSize;
-    geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-    geo->IndexBufferByteSize = ibByteSize;
+	geo->VertexByteStride = sizeof(Vertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
 
-    geo->DrawArgs["box"] = boxSubmesh;
-    geo->DrawArgs["grid"] = gridSubmesh;
-    geo->DrawArgs["sphere"] = sphereSubmesh;
-    geo->DrawArgs["cylinder"] = cylinderSubmesh;
-    geo->DrawArgs["quad"] = quadSubmesh;
+	geo->DrawArgs["box"] = boxSubmesh;
+	geo->DrawArgs["grid"] = gridSubmesh;
+	geo->DrawArgs["sphere"] = sphereSubmesh;
+	geo->DrawArgs["cylinder"] = cylinderSubmesh;
+	geo->DrawArgs["quad"] = quadSubmesh;
 
-    mGeometries[geo->Name] = std::move(geo);
+	mGeometries[geo->Name] = std::move(geo);
 }
 
 void GameFramework::LoadSkinnedModel()
 {
-    std::vector<SkinnedVertex> vertices;
-    std::vector<UINT> indices32bit;
-    std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
+	std::vector<SkinnedVertex> vertices;
+	std::vector<UINT> indices32bit;
+	std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
 
-    mSkinnedAnimationSets.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(mSkinnedModelFilename), 
-        std::forward_as_tuple(std::make_unique<AnimationSets>()));
-    fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
-        skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
+	mSkinnedAnimationSets.emplace(
+		std::piecewise_construct,
+		std::forward_as_tuple(mSkinnedModelFilename),
+		std::forward_as_tuple(std::make_unique<AnimationSets>()));
+	fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
+		skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
 
-    // Robot.txt
-    auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
-    animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
-        50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
-        * XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
-    );
-    animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
-        12, XMMatrixScaling(0.7f, 0.7f, 0.7f)* XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
-        * XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
-    );
+	// Robot.txt
+	auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
+	animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
+		50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
+		* XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
+	);
+	animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
+		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
+		* XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
+	);
 
-    std::vector<std::uint16_t> indices;
-    indices.reserve(indices32bit.size());
-    for (UINT index : indices32bit) {
-        indices.push_back(index);
-    }
+	std::vector<std::uint16_t> indices;
+	indices.reserve(indices32bit.size());
+	for (UINT index : indices32bit) {
+		indices.push_back(index);
+	}
 
-    const UINT vbByteSize = (UINT)vertices.size() * sizeof(SkinnedVertex);
-    const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(SkinnedVertex);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-    auto geo = std::make_unique<MeshGeometry>();
-    geo->Name = mSkinnedModelFilename;
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = mSkinnedModelFilename;
 
-    ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-    CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
-    ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-    CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
-    geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-        mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
 
-    geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-        mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
 
-    geo->VertexByteStride = sizeof(SkinnedVertex);
-    geo->VertexBufferByteSize = vbByteSize;
-    geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-    geo->IndexBufferByteSize = ibByteSize;
+	geo->VertexByteStride = sizeof(SkinnedVertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
 
-    for (UINT i = 0; i < (UINT)skinnedSubsets.size(); ++i)
-    {
-        SubmeshGeometry submesh;
-        std::string name(move(skinnedSubsets[i].name));
+	for (UINT i = 0; i < (UINT)skinnedSubsets.size(); ++i)
+	{
+		SubmeshGeometry submesh;
+		std::string name(move(skinnedSubsets[i].name));
 
-        submesh.IndexCount = (UINT)skinnedSubsets[i].indexCount;
-        submesh.StartIndexLocation = skinnedSubsets[i].startIndexLocation;
-        submesh.BaseVertexLocation = skinnedSubsets[i].baseVertexLocation;
+		submesh.IndexCount = (UINT)skinnedSubsets[i].indexCount;
+		submesh.StartIndexLocation = skinnedSubsets[i].startIndexLocation;
+		submesh.BaseVertexLocation = skinnedSubsets[i].baseVertexLocation;
 
-        geo->DrawArgs[name] = submesh;
-    }
+		geo->DrawArgs[name] = submesh;
+	}
 
-    mGeometries[geo->Name] = std::move(geo);
+	mGeometries[geo->Name] = std::move(geo);
 
-    mSkinnedMats.resize(skinnedSubsets.size());
-    mSkinnedMats[0].Name = std::string("soldier_head");
-    mSkinnedMats[0].DiffuseAlbedo = { 0.7f, 0.7f, 0.7f, 1.0f };
-    mSkinnedMats[0].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-    mSkinnedMats[0].Roughness = 0.5;
-    mSkinnedMats[0].AlphaClip = false;
-    mSkinnedMats[0].MaterialTypeName = std::string("Skinned");
-    mSkinnedMats[0].DiffuseMapName = std::string("checkboard.dds");
-    mSkinnedMats[0].NormalMapName = std::string("upBody_norm.dds");
+	mSkinnedMats.resize(skinnedSubsets.size());
+	mSkinnedMats[0].Name = std::string("soldier_head");
+	mSkinnedMats[0].DiffuseAlbedo = { 0.7f, 0.7f, 0.7f, 1.0f };
+	mSkinnedMats[0].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+	mSkinnedMats[0].Roughness = 0.5;
+	mSkinnedMats[0].AlphaClip = false;
+	mSkinnedMats[0].MaterialTypeName = std::string("Skinned");
+	mSkinnedMats[0].DiffuseMapName = std::string("checkboard.dds");
+	mSkinnedMats[0].NormalMapName = std::string("upBody_norm.dds");
 
-    mSkinnedMats[1].Name = std::string("soldier_upBody");
-    mSkinnedMats[1].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
-    mSkinnedMats[1].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-    mSkinnedMats[1].Roughness = 0.4;
-    mSkinnedMats[1].AlphaClip = false;
-    mSkinnedMats[1].MaterialTypeName = std::string("Skinned");
-    mSkinnedMats[1].DiffuseMapName = std::string("checkboard.dds");
-    mSkinnedMats[1].NormalMapName = std::string("upBody_norm.dds");
+	mSkinnedMats[1].Name = std::string("soldier_upBody");
+	mSkinnedMats[1].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+	mSkinnedMats[1].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+	mSkinnedMats[1].Roughness = 0.4;
+	mSkinnedMats[1].AlphaClip = false;
+	mSkinnedMats[1].MaterialTypeName = std::string("Skinned");
+	mSkinnedMats[1].DiffuseMapName = std::string("checkboard.dds");
+	mSkinnedMats[1].NormalMapName = std::string("upBody_norm.dds");
 
-    mSkinnedMats[2].Name = std::string("soldier_upBody2");
-    mSkinnedMats[2].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
-    mSkinnedMats[2].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-    mSkinnedMats[2].Roughness = 0.3;
-    mSkinnedMats[2].AlphaClip = false;
-    mSkinnedMats[2].MaterialTypeName = std::string("Skinned");
-    mSkinnedMats[2].DiffuseMapName = std::string("checkboard.dds");
-    mSkinnedMats[2].NormalMapName = std::string("upBody_norm.dds");
+	mSkinnedMats[2].Name = std::string("soldier_upBody2");
+	mSkinnedMats[2].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+	mSkinnedMats[2].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+	mSkinnedMats[2].Roughness = 0.3;
+	mSkinnedMats[2].AlphaClip = false;
+	mSkinnedMats[2].MaterialTypeName = std::string("Skinned");
+	mSkinnedMats[2].DiffuseMapName = std::string("checkboard.dds");
+	mSkinnedMats[2].NormalMapName = std::string("upBody_norm.dds");
 }
 
 void GameFramework::BuildFbxModelGeometry()
 {
-    auto equipmentGeo = std::make_unique<MeshGeometry>();
-    equipmentGeo->Name = "equipmentGeo";
+	auto equipmentGeo = std::make_unique<MeshGeometry>();
+	equipmentGeo->Name = "equipmentGeo";
 
-    std::vector<Vertex> oneHandSwordVertices;
-    std::vector<UINT> oneHandSwordIndices32bit;
-    std::vector<FbxBinLoader::SubMeshInfo> oneHandSwordSubsets;
-    std::string oneHandSwordFileName = "Models\\OneHandSword.bin";
-    fbxBinLoader.LoadFbxBin(oneHandSwordFileName, 
-        oneHandSwordVertices, oneHandSwordIndices32bit, oneHandSwordSubsets);
+	std::vector<Vertex> oneHandSwordVertices;
+	std::vector<UINT> oneHandSwordIndices32bit;
+	std::vector<FbxBinLoader::SubMeshInfo> oneHandSwordSubsets;
+	std::string oneHandSwordFileName = "Models\\OneHandSword.bin";
+	fbxBinLoader.LoadFbxBin(oneHandSwordFileName,
+		oneHandSwordVertices, oneHandSwordIndices32bit, oneHandSwordSubsets);
 
-    std::vector<Vertex> shieldVertices;
-    std::vector<UINT> shieldIndices32bit;
-    std::vector<FbxBinLoader::SubMeshInfo> shieldSubsets;
-    std::string shieldFileName = "Models\\Shield.bin";
-    fbxBinLoader.LoadFbxBin(shieldFileName,
-        shieldVertices, shieldIndices32bit, shieldSubsets);
+	std::vector<Vertex> shieldVertices;
+	std::vector<UINT> shieldIndices32bit;
+	std::vector<FbxBinLoader::SubMeshInfo> shieldSubsets;
+	std::string shieldFileName = "Models\\Shield.bin";
+	fbxBinLoader.LoadFbxBin(shieldFileName,
+		shieldVertices, shieldIndices32bit, shieldSubsets);
 
-    std::vector<Vertex> equipmentVertices;
-    equipmentVertices.insert(equipmentVertices.end(), std::begin(oneHandSwordVertices), std::end(oneHandSwordVertices));
-    equipmentVertices.insert(equipmentVertices.end(), std::begin(shieldVertices), std::end(shieldVertices));
+	std::vector<Vertex> equipmentVertices;
+	equipmentVertices.insert(equipmentVertices.end(), std::begin(oneHandSwordVertices), std::end(oneHandSwordVertices));
+	equipmentVertices.insert(equipmentVertices.end(), std::begin(shieldVertices), std::end(shieldVertices));
 
-    std::vector<std::uint16_t> equipmentIndices;
-    equipmentIndices.insert(equipmentIndices.end(), std::begin(oneHandSwordIndices32bit), std::end(oneHandSwordIndices32bit));
-    equipmentIndices.insert(equipmentIndices.end(), std::begin(shieldIndices32bit), std::end(shieldIndices32bit));
+	std::vector<std::uint16_t> equipmentIndices;
+	equipmentIndices.insert(equipmentIndices.end(), std::begin(oneHandSwordIndices32bit), std::end(oneHandSwordIndices32bit));
+	equipmentIndices.insert(equipmentIndices.end(), std::begin(shieldIndices32bit), std::end(shieldIndices32bit));
 
-    const UINT vbByteSize = (UINT)equipmentVertices.size() * sizeof(Vertex);
-    const UINT ibByteSize = (UINT)equipmentIndices.size() * sizeof(std::uint16_t);
+	const UINT vbByteSize = (UINT)equipmentVertices.size() * sizeof(Vertex);
+	const UINT ibByteSize = (UINT)equipmentIndices.size() * sizeof(std::uint16_t);
 
-    ThrowIfFailed(D3DCreateBlob(vbByteSize, &equipmentGeo->VertexBufferCPU));
-    CopyMemory(equipmentGeo->VertexBufferCPU->GetBufferPointer(), equipmentVertices.data(), vbByteSize);
-    ThrowIfFailed(D3DCreateBlob(ibByteSize, &equipmentGeo->IndexBufferCPU));
-    CopyMemory(equipmentGeo->IndexBufferCPU->GetBufferPointer(), equipmentIndices.data(), ibByteSize);
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &equipmentGeo->VertexBufferCPU));
+	CopyMemory(equipmentGeo->VertexBufferCPU->GetBufferPointer(), equipmentVertices.data(), vbByteSize);
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &equipmentGeo->IndexBufferCPU));
+	CopyMemory(equipmentGeo->IndexBufferCPU->GetBufferPointer(), equipmentIndices.data(), ibByteSize);
 
-    equipmentGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-        mCommandList.Get(), equipmentVertices.data(), vbByteSize, equipmentGeo->VertexBufferUploader);
+	equipmentGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), equipmentVertices.data(), vbByteSize, equipmentGeo->VertexBufferUploader);
 
-    equipmentGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-        mCommandList.Get(), equipmentIndices.data(), ibByteSize, equipmentGeo->IndexBufferUploader);
+	equipmentGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), equipmentIndices.data(), ibByteSize, equipmentGeo->IndexBufferUploader);
 
-    equipmentGeo->VertexByteStride = sizeof(Vertex);
-    equipmentGeo->VertexBufferByteSize = vbByteSize;
-    equipmentGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
-    equipmentGeo->IndexBufferByteSize = ibByteSize;
+	equipmentGeo->VertexByteStride = sizeof(Vertex);
+	equipmentGeo->VertexBufferByteSize = vbByteSize;
+	equipmentGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	equipmentGeo->IndexBufferByteSize = ibByteSize;
 
-    for (auto& subset: oneHandSwordSubsets)
-    {
-        SubmeshGeometry submesh;
-        std::string name("OneHandSword" + subset.name);
+	for (auto& subset : oneHandSwordSubsets)
+	{
+		SubmeshGeometry submesh;
+		std::string name("OneHandSword" + subset.name);
 
-        submesh.IndexCount = (UINT)subset.indexCount;
-        submesh.StartIndexLocation = subset.startIndexLocation;
-        submesh.BaseVertexLocation = subset.baseVertexLocation;
+		submesh.IndexCount = (UINT)subset.indexCount;
+		submesh.StartIndexLocation = subset.startIndexLocation;
+		submesh.BaseVertexLocation = subset.baseVertexLocation;
 
-        equipmentGeo->DrawArgs[name] = submesh;
-    }
+		equipmentGeo->DrawArgs[name] = submesh;
+	}
 
-    for (auto& subset : shieldSubsets)
-    {
-        SubmeshGeometry submesh;
-        std::string name("Shield" + subset.name);
+	for (auto& subset : shieldSubsets)
+	{
+		SubmeshGeometry submesh;
+		std::string name("Shield" + subset.name);
 
-        submesh.IndexCount = (UINT)subset.indexCount;
-        submesh.StartIndexLocation = subset.startIndexLocation + oneHandSwordIndices32bit.size();
-        submesh.BaseVertexLocation = subset.baseVertexLocation + oneHandSwordVertices.size();
+		submesh.IndexCount = (UINT)subset.indexCount;
+		submesh.StartIndexLocation = subset.startIndexLocation + oneHandSwordIndices32bit.size();
+		submesh.BaseVertexLocation = subset.baseVertexLocation + oneHandSwordVertices.size();
 
-        equipmentGeo->DrawArgs[name] = submesh;
-    }
+		equipmentGeo->DrawArgs[name] = submesh;
+	}
 
-    mGeometries[equipmentGeo->Name] = std::move(equipmentGeo);
+	mGeometries[equipmentGeo->Name] = std::move(equipmentGeo);
 }
 
 void GameFramework::BuildPSOs()
 {
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
 
-    //
-    // PSO for opaque objects.
-    //
-    ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-    opaquePsoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
-    opaquePsoDesc.pRootSignature = mRootSignature.Get();
-    opaquePsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["standardVS"]->GetBufferPointer()),
-        mShaders["standardVS"]->GetBufferSize()
-    };
-    opaquePsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["opaquePS"]->GetBufferPointer()),
-        mShaders["opaquePS"]->GetBufferSize()
-    };
-    opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-    opaquePsoDesc.SampleMask = UINT_MAX;
-    opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    opaquePsoDesc.NumRenderTargets = 1;
-    opaquePsoDesc.RTVFormats[0] = mBackBufferFormat;
-    opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
-    opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
-    opaquePsoDesc.DSVFormat = mDepthStencilFormat;
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
+	//
+	// PSO for opaque objects.
+	//
+	ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	opaquePsoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
+	opaquePsoDesc.pRootSignature = mRootSignature.Get();
+	opaquePsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["standardVS"]->GetBufferPointer()),
+		mShaders["standardVS"]->GetBufferSize()
+	};
+	opaquePsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["opaquePS"]->GetBufferPointer()),
+		mShaders["opaquePS"]->GetBufferSize()
+	};
+	opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	opaquePsoDesc.SampleMask = UINT_MAX;
+	opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	opaquePsoDesc.NumRenderTargets = 1;
+	opaquePsoDesc.RTVFormats[0] = mBackBufferFormat;
+	opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
+	opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
+	opaquePsoDesc.DSVFormat = mDepthStencilFormat;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedOpaquePsoDesc = opaquePsoDesc;
-    equippedOpaquePsoDesc.VS = 
-    {
-        reinterpret_cast<BYTE*>(mShaders["equippedVS"]->GetBufferPointer()),
-        mShaders["equippedVS"]->GetBufferSize()
-    };
-    equippedOpaquePsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["equippedPS"]->GetBufferPointer()),
-        mShaders["equippedPS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedOpaquePsoDesc, IID_PPV_ARGS(&mPSOs["equippedOpaque"])));
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedOpaquePsoDesc = opaquePsoDesc;
+	equippedOpaquePsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["equippedVS"]->GetBufferPointer()),
+		mShaders["equippedVS"]->GetBufferSize()
+	};
+	equippedOpaquePsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["equippedPS"]->GetBufferPointer()),
+		mShaders["equippedPS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedOpaquePsoDesc, IID_PPV_ARGS(&mPSOs["equippedOpaque"])));
 
-    //
-    // PSO for skinned pass.
-    //
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC skinnedOpaquePsoDesc = opaquePsoDesc;
-    skinnedOpaquePsoDesc.InputLayout = { mSkinnedInputLayout.data(), (UINT)mSkinnedInputLayout.size() };
-    skinnedOpaquePsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["skinnedVS"]->GetBufferPointer()),
-        mShaders["skinnedVS"]->GetBufferSize()
-    };
-    skinnedOpaquePsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["skinnedPS"]->GetBufferPointer()),
-        mShaders["skinnedPS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skinnedOpaquePsoDesc, IID_PPV_ARGS(&mPSOs["skinnedOpaque"])));
+	//
+	// PSO for skinned pass.
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC skinnedOpaquePsoDesc = opaquePsoDesc;
+	skinnedOpaquePsoDesc.InputLayout = { mSkinnedInputLayout.data(), (UINT)mSkinnedInputLayout.size() };
+	skinnedOpaquePsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["skinnedVS"]->GetBufferPointer()),
+		mShaders["skinnedVS"]->GetBufferSize()
+	};
+	skinnedOpaquePsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["skinnedPS"]->GetBufferPointer()),
+		mShaders["skinnedPS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skinnedOpaquePsoDesc, IID_PPV_ARGS(&mPSOs["skinnedOpaque"])));
 
-    //
-    // PSO for shadow map pass.
-    //
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC smapPsoDesc = opaquePsoDesc;
-    smapPsoDesc.RasterizerState.DepthBias = 100000;
-    smapPsoDesc.RasterizerState.DepthBiasClamp = 0.0f;
-    smapPsoDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
-    smapPsoDesc.pRootSignature = mRootSignature.Get();
-    smapPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["shadowVS"]->GetBufferPointer()),
-        mShaders["shadowVS"]->GetBufferSize()
-    };
-    smapPsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["shadowOpaquePS"]->GetBufferPointer()),
-        mShaders["shadowOpaquePS"]->GetBufferSize()
-    };
+	//
+	// PSO for shadow map pass.
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC smapPsoDesc = opaquePsoDesc;
+	smapPsoDesc.RasterizerState.DepthBias = 100000;
+	smapPsoDesc.RasterizerState.DepthBiasClamp = 0.0f;
+	smapPsoDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+	smapPsoDesc.pRootSignature = mRootSignature.Get();
+	smapPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["shadowVS"]->GetBufferPointer()),
+		mShaders["shadowVS"]->GetBufferSize()
+	};
+	smapPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["shadowOpaquePS"]->GetBufferPointer()),
+		mShaders["shadowOpaquePS"]->GetBufferSize()
+	};
 
-    // Shadow map pass does not have a render target.
-    smapPsoDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
-    smapPsoDesc.NumRenderTargets = 0;
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&smapPsoDesc, IID_PPV_ARGS(&mPSOs["shadow_opaque"])));
+	// Shadow map pass does not have a render target.
+	smapPsoDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+	smapPsoDesc.NumRenderTargets = 0;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&smapPsoDesc, IID_PPV_ARGS(&mPSOs["shadow_opaque"])));
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC skinnedSmapPsoDesc = smapPsoDesc;
-    skinnedSmapPsoDesc.InputLayout = { mSkinnedInputLayout.data(), (UINT)mSkinnedInputLayout.size() };
-    skinnedSmapPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["skinnedShadowVS"]->GetBufferPointer()),
-        mShaders["skinnedShadowVS"]->GetBufferSize()
-    };
-    skinnedSmapPsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["shadowOpaquePS"]->GetBufferPointer()),
-        mShaders["shadowOpaquePS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skinnedSmapPsoDesc, IID_PPV_ARGS(&mPSOs["skinnedShadow_opaque"])));
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC skinnedSmapPsoDesc = smapPsoDesc;
+	skinnedSmapPsoDesc.InputLayout = { mSkinnedInputLayout.data(), (UINT)mSkinnedInputLayout.size() };
+	skinnedSmapPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["skinnedShadowVS"]->GetBufferPointer()),
+		mShaders["skinnedShadowVS"]->GetBufferSize()
+	};
+	skinnedSmapPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["shadowOpaquePS"]->GetBufferPointer()),
+		mShaders["shadowOpaquePS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skinnedSmapPsoDesc, IID_PPV_ARGS(&mPSOs["skinnedShadow_opaque"])));
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedSmapPsoDesc = smapPsoDesc;
-    equippedSmapPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["equippedShadowVS"]->GetBufferPointer()),
-        mShaders["equippedShadowVS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedSmapPsoDesc, IID_PPV_ARGS(&mPSOs["equippedShadow_opaque"])));
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedSmapPsoDesc = smapPsoDesc;
+	equippedSmapPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["equippedShadowVS"]->GetBufferPointer()),
+		mShaders["equippedShadowVS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedSmapPsoDesc, IID_PPV_ARGS(&mPSOs["equippedShadow_opaque"])));
 
-    //
-    // PSO for debug layer.
-    //
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC debugPsoDesc = opaquePsoDesc;
-    debugPsoDesc.pRootSignature = mRootSignature.Get();
-    debugPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["debugVS"]->GetBufferPointer()),
-        mShaders["debugVS"]->GetBufferSize()
-    };
-    debugPsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["debugPS"]->GetBufferPointer()),
-        mShaders["debugPS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&debugPsoDesc, IID_PPV_ARGS(&mPSOs["debug"])));
+	//
+	// PSO for debug layer.
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC debugPsoDesc = opaquePsoDesc;
+	debugPsoDesc.pRootSignature = mRootSignature.Get();
+	debugPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["debugVS"]->GetBufferPointer()),
+		mShaders["debugVS"]->GetBufferSize()
+	};
+	debugPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["debugPS"]->GetBufferPointer()),
+		mShaders["debugPS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&debugPsoDesc, IID_PPV_ARGS(&mPSOs["debug"])));
 
-    //
-    // PSO for drawing normals.
-    //
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC drawNormalsPsoDesc = opaquePsoDesc;
-    drawNormalsPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["drawNormalsVS"]->GetBufferPointer()),
-        mShaders["drawNormalsVS"]->GetBufferSize()
-    };
-    drawNormalsPsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["drawNormalsPS"]->GetBufferPointer()),
-        mShaders["drawNormalsPS"]->GetBufferSize()
-    };
-    drawNormalsPsoDesc.RTVFormats[0] = Ssao::NormalMapFormat;
-    drawNormalsPsoDesc.SampleDesc.Count = 1;
-    drawNormalsPsoDesc.SampleDesc.Quality = 0;
-    drawNormalsPsoDesc.DSVFormat = mDepthStencilFormat;
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&drawNormalsPsoDesc, IID_PPV_ARGS(&mPSOs["drawNormals"])));
+	//
+	// PSO for drawing normals.
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC drawNormalsPsoDesc = opaquePsoDesc;
+	drawNormalsPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["drawNormalsVS"]->GetBufferPointer()),
+		mShaders["drawNormalsVS"]->GetBufferSize()
+	};
+	drawNormalsPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["drawNormalsPS"]->GetBufferPointer()),
+		mShaders["drawNormalsPS"]->GetBufferSize()
+	};
+	drawNormalsPsoDesc.RTVFormats[0] = Ssao::NormalMapFormat;
+	drawNormalsPsoDesc.SampleDesc.Count = 1;
+	drawNormalsPsoDesc.SampleDesc.Quality = 0;
+	drawNormalsPsoDesc.DSVFormat = mDepthStencilFormat;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&drawNormalsPsoDesc, IID_PPV_ARGS(&mPSOs["drawNormals"])));
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC skinnedDrawNormalsPsoDesc = drawNormalsPsoDesc;
-    skinnedDrawNormalsPsoDesc.InputLayout = { mSkinnedInputLayout.data(), (UINT)mSkinnedInputLayout.size() };
-    skinnedDrawNormalsPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["skinnedDrawNormalsVS"]->GetBufferPointer()),
-        mShaders["skinnedDrawNormalsVS"]->GetBufferSize()
-    };
-    skinnedDrawNormalsPsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["drawNormalsPS"]->GetBufferPointer()),
-        mShaders["drawNormalsPS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skinnedDrawNormalsPsoDesc, IID_PPV_ARGS(&mPSOs["skinnedDrawNormals"])));
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC skinnedDrawNormalsPsoDesc = drawNormalsPsoDesc;
+	skinnedDrawNormalsPsoDesc.InputLayout = { mSkinnedInputLayout.data(), (UINT)mSkinnedInputLayout.size() };
+	skinnedDrawNormalsPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["skinnedDrawNormalsVS"]->GetBufferPointer()),
+		mShaders["skinnedDrawNormalsVS"]->GetBufferSize()
+	};
+	skinnedDrawNormalsPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["drawNormalsPS"]->GetBufferPointer()),
+		mShaders["drawNormalsPS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skinnedDrawNormalsPsoDesc, IID_PPV_ARGS(&mPSOs["skinnedDrawNormals"])));
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedDrawNormalsPsoDesc = drawNormalsPsoDesc;
-    equippedDrawNormalsPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["equippedDrawNormalsVS"]->GetBufferPointer()),
-        mShaders["equippedDrawNormalsVS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedDrawNormalsPsoDesc, IID_PPV_ARGS(&mPSOs["equippedDrawNormals"])));
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC equippedDrawNormalsPsoDesc = drawNormalsPsoDesc;
+	equippedDrawNormalsPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["equippedDrawNormalsVS"]->GetBufferPointer()),
+		mShaders["equippedDrawNormalsVS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&equippedDrawNormalsPsoDesc, IID_PPV_ARGS(&mPSOs["equippedDrawNormals"])));
 
 
-    //
-    // PSO for SSAO.
-    //
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC ssaoPsoDesc = opaquePsoDesc;
-    ssaoPsoDesc.InputLayout = { nullptr, 0 };
-    ssaoPsoDesc.pRootSignature = mSsaoRootSignature.Get();
-    ssaoPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["ssaoVS"]->GetBufferPointer()),
-        mShaders["ssaoVS"]->GetBufferSize()
-    };
-    ssaoPsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["ssaoPS"]->GetBufferPointer()),
-        mShaders["ssaoPS"]->GetBufferSize()
-    };
+	//
+	// PSO for SSAO.
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC ssaoPsoDesc = opaquePsoDesc;
+	ssaoPsoDesc.InputLayout = { nullptr, 0 };
+	ssaoPsoDesc.pRootSignature = mSsaoRootSignature.Get();
+	ssaoPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ssaoVS"]->GetBufferPointer()),
+		mShaders["ssaoVS"]->GetBufferSize()
+	};
+	ssaoPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ssaoPS"]->GetBufferPointer()),
+		mShaders["ssaoPS"]->GetBufferSize()
+	};
 
-    // SSAO effect does not need the depth buffer.
-    ssaoPsoDesc.DepthStencilState.DepthEnable = false;
-    ssaoPsoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-    ssaoPsoDesc.RTVFormats[0] = Ssao::AmbientMapFormat;
-    ssaoPsoDesc.SampleDesc.Count = 1;
-    ssaoPsoDesc.SampleDesc.Quality = 0;
-    ssaoPsoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ssaoPsoDesc, IID_PPV_ARGS(&mPSOs["ssao"])));
+	// SSAO effect does not need the depth buffer.
+	ssaoPsoDesc.DepthStencilState.DepthEnable = false;
+	ssaoPsoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	ssaoPsoDesc.RTVFormats[0] = Ssao::AmbientMapFormat;
+	ssaoPsoDesc.SampleDesc.Count = 1;
+	ssaoPsoDesc.SampleDesc.Quality = 0;
+	ssaoPsoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ssaoPsoDesc, IID_PPV_ARGS(&mPSOs["ssao"])));
 
-    //
-    // PSO for SSAO blur.
-    //
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC ssaoBlurPsoDesc = ssaoPsoDesc;
-    ssaoBlurPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["ssaoBlurVS"]->GetBufferPointer()),
-        mShaders["ssaoBlurVS"]->GetBufferSize()
-    };
-    ssaoBlurPsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["ssaoBlurPS"]->GetBufferPointer()),
-        mShaders["ssaoBlurPS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ssaoBlurPsoDesc, IID_PPV_ARGS(&mPSOs["ssaoBlur"])));
+	//
+	// PSO for SSAO blur.
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC ssaoBlurPsoDesc = ssaoPsoDesc;
+	ssaoBlurPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ssaoBlurVS"]->GetBufferPointer()),
+		mShaders["ssaoBlurVS"]->GetBufferSize()
+	};
+	ssaoBlurPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ssaoBlurPS"]->GetBufferPointer()),
+		mShaders["ssaoBlurPS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ssaoBlurPsoDesc, IID_PPV_ARGS(&mPSOs["ssaoBlur"])));
 
-    //
-    // PSO for sky.
-    //
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC skyPsoDesc = opaquePsoDesc;
+	//
+	// PSO for sky.
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC skyPsoDesc = opaquePsoDesc;
 
-    // The camera is inside the sky sphere, so just turn off culling.
-    skyPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	// The camera is inside the sky sphere, so just turn off culling.
+	skyPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 
-    // Make sure the depth function is LESS_EQUAL and not just LESS.  
-    // Otherwise, the normalized depth values at z = 1 (NDC) will 
-    // fail the depth test if the depth buffer was cleared to 1.
-    skyPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-    skyPsoDesc.pRootSignature = mRootSignature.Get();
-    skyPsoDesc.VS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["skyVS"]->GetBufferPointer()),
-        mShaders["skyVS"]->GetBufferSize()
-    };
-    skyPsoDesc.PS =
-    {
-        reinterpret_cast<BYTE*>(mShaders["skyPS"]->GetBufferPointer()),
-        mShaders["skyPS"]->GetBufferSize()
-    };
-    ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
+	// Make sure the depth function is LESS_EQUAL and not just LESS.  
+	// Otherwise, the normalized depth values at z = 1 (NDC) will 
+	// fail the depth test if the depth buffer was cleared to 1.
+	skyPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+	skyPsoDesc.pRootSignature = mRootSignature.Get();
+	skyPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["skyVS"]->GetBufferPointer()),
+		mShaders["skyVS"]->GetBufferSize()
+	};
+	skyPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["skyPS"]->GetBufferPointer()),
+		mShaders["skyPS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
 
 }
 
 void GameFramework::BuildFrameResources()
 {
-    for (int i = 0; i < gNumFrameResources; ++i)
-    {
-        mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
-            2, (UINT)WORLD.GetComponents<MeshComponent>().size(),
-            1,
-            (UINT)mMaterials.size(),
-            (UINT)(WORLD.GetComponents<EquipmentOwnerComponent>().size() * (UINT)EquipmentTypes::Count)
-            ));
-    }
+	for (int i = 0; i < gNumFrameResources; ++i)
+	{
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
+			2, (UINT)WORLD.GetComponents<MeshComponent>().size(),
+			1,
+			(UINT)mMaterials.size(),
+			(UINT)(WORLD.GetComponents<EquipmentOwnerComponent>().size() * (UINT)EquipmentTypes::Count)
+		));
+	}
 }
 
 void GameFramework::BuildMaterials()
 {
-    auto bricks0 = std::make_unique<Material>();
-    bricks0->Name = "bricks0";
-    bricks0->MatCBIndex = 0;
-    bricks0->DiffuseSrvHeapIndex = 0;
-    bricks0->NormalSrvHeapIndex = 1;
-    bricks0->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-    bricks0->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
-    bricks0->Roughness = 0.3f;
+	auto bricks0 = std::make_unique<Material>();
+	bricks0->Name = "bricks0";
+	bricks0->MatCBIndex = 0;
+	bricks0->DiffuseSrvHeapIndex = 0;
+	bricks0->NormalSrvHeapIndex = 1;
+	bricks0->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	bricks0->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
+	bricks0->Roughness = 0.3f;
 
-    auto tile0 = std::make_unique<Material>();
-    tile0->Name = "tile0";
-    tile0->MatCBIndex = 1;
-    tile0->DiffuseSrvHeapIndex = 2;
-    tile0->NormalSrvHeapIndex = 3;
-    tile0->DiffuseAlbedo = XMFLOAT4(0.9f, 0.9f, 0.9f, 1.0f);
-    tile0->FresnelR0 = XMFLOAT3(0.2f, 0.2f, 0.2f);
-    tile0->Roughness = 0.1f;
+	auto tile0 = std::make_unique<Material>();
+	tile0->Name = "tile0";
+	tile0->MatCBIndex = 1;
+	tile0->DiffuseSrvHeapIndex = 2;
+	tile0->NormalSrvHeapIndex = 3;
+	tile0->DiffuseAlbedo = XMFLOAT4(0.9f, 0.9f, 0.9f, 1.0f);
+	tile0->FresnelR0 = XMFLOAT3(0.2f, 0.2f, 0.2f);
+	tile0->Roughness = 0.1f;
 
-    auto mirror0 = std::make_unique<Material>();
-    mirror0->Name = "mirror0";
-    mirror0->MatCBIndex = 2;
-    mirror0->DiffuseSrvHeapIndex = 4;
-    mirror0->NormalSrvHeapIndex = 5;
-    mirror0->DiffuseAlbedo = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
-    mirror0->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
-    mirror0->Roughness = 0.1f;
+	auto mirror0 = std::make_unique<Material>();
+	mirror0->Name = "mirror0";
+	mirror0->MatCBIndex = 2;
+	mirror0->DiffuseSrvHeapIndex = 4;
+	mirror0->NormalSrvHeapIndex = 5;
+	mirror0->DiffuseAlbedo = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+	mirror0->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
+	mirror0->Roughness = 0.1f;
 
-    auto sky = std::make_unique<Material>();
-    sky->Name = "sky";
-    sky->MatCBIndex = 3;
-    sky->DiffuseSrvHeapIndex = 6;
-    sky->NormalSrvHeapIndex = 7;
-    sky->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-    sky->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
-    sky->Roughness = 1.0f;
+	auto sky = std::make_unique<Material>();
+	sky->Name = "sky";
+	sky->MatCBIndex = 3;
+	sky->DiffuseSrvHeapIndex = 6;
+	sky->NormalSrvHeapIndex = 7;
+	sky->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	sky->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
+	sky->Roughness = 1.0f;
 
-    mMaterials["bricks0"] = std::move(bricks0);
-    mMaterials["tile0"] = std::move(tile0);
-    mMaterials["mirror0"] = std::move(mirror0);
-    mMaterials["sky"] = std::move(sky);
+	mMaterials["bricks0"] = std::move(bricks0);
+	mMaterials["tile0"] = std::move(tile0);
+	mMaterials["mirror0"] = std::move(mirror0);
+	mMaterials["sky"] = std::move(sky);
 
-    UINT matCBIndex = 4;
-    UINT srvHeapIndex = mSkinnedSrvHeapStart;
-    for (UINT i = 0; i < mSkinnedMats.size(); ++i)
-    {
-        auto mat = std::make_unique<Material>();
-        mat->Name = mSkinnedMats[i].Name;
-        mat->MatCBIndex = matCBIndex++;
-        mat->DiffuseSrvHeapIndex = srvHeapIndex++;
-        mat->NormalSrvHeapIndex = srvHeapIndex++;
-        mat->DiffuseAlbedo = mSkinnedMats[i].DiffuseAlbedo;
-        mat->FresnelR0 = mSkinnedMats[i].FresnelR0;
-        mat->Roughness = mSkinnedMats[i].Roughness;
+	UINT matCBIndex = 4;
+	UINT srvHeapIndex = mSkinnedSrvHeapStart;
+	for (UINT i = 0; i < mSkinnedMats.size(); ++i)
+	{
+		auto mat = std::make_unique<Material>();
+		mat->Name = mSkinnedMats[i].Name;
+		mat->MatCBIndex = matCBIndex++;
+		mat->DiffuseSrvHeapIndex = srvHeapIndex++;
+		mat->NormalSrvHeapIndex = srvHeapIndex++;
+		mat->DiffuseAlbedo = mSkinnedMats[i].DiffuseAlbedo;
+		mat->FresnelR0 = mSkinnedMats[i].FresnelR0;
+		mat->Roughness = mSkinnedMats[i].Roughness;
 
-        mMaterials[mat->Name] = std::move(mat);
-    }
+		mMaterials[mat->Name] = std::move(mat);
+	}
 
-    auto equipment = std::make_unique<Material>();
-    equipment->Name = "equipment";
-    equipment->MatCBIndex = matCBIndex++;
-    equipment->DiffuseSrvHeapIndex = 4;
-    equipment->NormalSrvHeapIndex = -1;
-    equipment->DiffuseAlbedo = XMFLOAT4(0.5f, 0.7f, 1.0f, 1.0f);
-    equipment->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
-    equipment->Roughness = 0.5f;
-    mMaterials["equipment"] = std::move(equipment);
+	auto equipment = std::make_unique<Material>();
+	equipment->Name = "equipment";
+	equipment->MatCBIndex = matCBIndex++;
+	equipment->DiffuseSrvHeapIndex = 4;
+	equipment->NormalSrvHeapIndex = -1;
+	equipment->DiffuseAlbedo = XMFLOAT4(0.5f, 0.7f, 1.0f, 1.0f);
+	equipment->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
+	equipment->Roughness = 0.5f;
+	mMaterials["equipment"] = std::move(equipment);
 }
 
 void GameFramework::BuildRenderItems()
 {
-    UINT objCBIndexCounter = 0;
+	using namespace physics;
+	using namespace JPH;
 
-    auto& skyComponents = WORLD.GetComponents<SkyComponent>();
-    for (auto& skyCom : skyComponents) {
-        MeshComponent comSkyMesh{ skyCom.GetOwner(), objCBIndexCounter++,
-            XMFLOAT3(5000.0f, 5000.0f, 5000.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
-            XMMatrixIdentity(),
-            {mGeometries["shapeGeo"].get()}, {"sphere"}, { mMaterials["sky"].get() }
-        };
-        WORLD.AttachComponent(skyCom.GetOwner(), std::move(comSkyMesh));
-    }
+	auto& bodyInterface = PHYSICS_SYSTEM.GetBodyInterfaceNoLock();
+	UINT objCBIndexCounter = 0;
 
-    auto hQuadObj = WORLD.AddObject();
-    MeshComponent comQuadMesh{ hQuadObj, objCBIndexCounter++, 
-        XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
-        XMMatrixIdentity(),
-        {mGeometries["shapeGeo"].get()}, {"quad"}, { mMaterials["bricks0"].get() }
-    };
-    WORLD.AttachComponent(hQuadObj, std::move(comQuadMesh));
-    WORLD.AttachComponent(hQuadObj, NonAnimatedComponent(hQuadObj));
+	auto& skyComponents = WORLD.GetComponents<SkyComponent>();
+	for (auto& skyCom : skyComponents) {
+		MeshComponent comSkyMesh{ skyCom.GetOwner(), objCBIndexCounter++,
+			XMFLOAT3(5000.0f, 5000.0f, 5000.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+			XMMatrixIdentity(),
+			{mGeometries["shapeGeo"].get()}, {"sphere"}, { mMaterials["sky"].get() }
+		};
+		WORLD.AttachComponent(skyCom.GetOwner(), std::move(comSkyMesh));
+	}
 
-    auto hBoxObj = WORLD.AddObject();
-    MeshComponent comBoxMesh( hBoxObj, objCBIndexCounter++,
-        XMFLOAT3(2.0f, 1.0f, 2.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.5f, 0.0f), 
-        XMMatrixScaling(1.0f, 1.0f, 1.0f),
-        {mGeometries["shapeGeo"].get()}, {"box"}, { mMaterials["bricks0"].get() }
-    );
-    WORLD.AttachComponent(hBoxObj, std::move(comBoxMesh));
-    WORLD.AttachComponent(hBoxObj, NonAnimatedComponent(hBoxObj));
+	auto hQuadObj = WORLD.AddObject();
+	MeshComponent comQuadMesh{ hQuadObj, objCBIndexCounter++,
+		XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+		XMMatrixIdentity(),
+		{mGeometries["shapeGeo"].get()}, {"quad"}, { mMaterials["bricks0"].get() }
+	};
+	WORLD.AttachComponent(hQuadObj, std::move(comQuadMesh));
+	WORLD.AttachComponent(hQuadObj, NonAnimatedComponent(hQuadObj));
+	auto pShape = new PlaneShape{ Plane::sFromPointAndNormal(Vec3::sZero(), Vec3::sAxisY()) };
+	StaticBody comQuadBody{ hQuadObj, bodyInterface, pShape, Vec3::sZero(), Quat::sIdentity() };
+	WORLD.AttachComponent(hQuadObj, std::move(comQuadBody));
 
-    auto hGridObj = WORLD.AddObject();
-    MeshComponent comGridMesh(hGridObj, objCBIndexCounter++,
-        XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
-        XMMatrixScaling(8.0f, 8.0f, 1.0f),
-        { mGeometries["shapeGeo"].get() }, { "grid" }, { mMaterials["tile0"].get() }
-    );
-    WORLD.AttachComponent(hGridObj, std::move(comGridMesh));
-    WORLD.AttachComponent(hGridObj, NonAnimatedComponent(hGridObj));
+	auto hBoxObj = WORLD.AddObject();
+	MeshComponent comBoxMesh(hBoxObj, objCBIndexCounter++,
+		XMFLOAT3(2.0f, 1.0f, 2.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.5f, 0.0f),
+		XMMatrixScaling(1.0f, 1.0f, 1.0f),
+		{ mGeometries["shapeGeo"].get() }, { "box" }, { mMaterials["bricks0"].get() }
+	);
+	WORLD.AttachComponent(hBoxObj, std::move(comBoxMesh));
+	WORLD.AttachComponent(hBoxObj, NonAnimatedComponent(hBoxObj));
 
-    XMMATRIX brickTexTransform = XMMatrixScaling(1.5f, 2.0f, 1.0f);
-    for (int i = 0; i < 5; ++i)
-    {
-        auto hLeftCylObj = WORLD.AddObject();
-        auto hRightCylObj = WORLD.AddObject();
-        auto hLeftSphereObj = WORLD.AddObject();
-        auto hRightSphereObj = WORLD.AddObject();
+	auto hGridObj = WORLD.AddObject();
+	MeshComponent comGridMesh(hGridObj, objCBIndexCounter++,
+		XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+		XMMatrixScaling(8.0f, 8.0f, 1.0f),
+		{ mGeometries["shapeGeo"].get() }, { "grid" }, { mMaterials["tile0"].get() }
+	);
+	WORLD.AttachComponent(hGridObj, std::move(comGridMesh));
+	WORLD.AttachComponent(hGridObj, NonAnimatedComponent(hGridObj));
 
-        XMFLOAT3 leftCylWorldTranslation = XMFLOAT3(-5.0f, 1.5f, -10.0f + i * 5.0f);
-        XMFLOAT3 rightCylWorldTranslation = XMFLOAT3(+5.0f, 1.5f, -10.0f + i * 5.0f);
+	XMMATRIX brickTexTransform = XMMatrixScaling(1.5f, 2.0f, 1.0f);
+	for (int i = 0; i < 5; ++i)
+	{
+		auto hLeftCylObj = WORLD.AddObject();
+		auto hRightCylObj = WORLD.AddObject();
+		auto hLeftSphereObj = WORLD.AddObject();
+		auto hRightSphereObj = WORLD.AddObject();
 
-        XMFLOAT3 leftSphereWorldTranslation = XMFLOAT3(-5.0f, 3.5f, -10.0f + i * 5.0f);
-        XMFLOAT3 rightSphereWorldTranslation = XMFLOAT3(+5.0f, 3.5f, -10.0f + i * 5.0f);
+		XMFLOAT3 leftCylWorldTranslation = XMFLOAT3(-5.0f, 1.5f, -10.0f + i * 5.0f);
+		XMFLOAT3 rightCylWorldTranslation = XMFLOAT3(+5.0f, 1.5f, -10.0f + i * 5.0f);
 
-        MeshComponent comLeftCyleMesh(hLeftCylObj, objCBIndexCounter++,
-            XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftCylWorldTranslation,
-            brickTexTransform,
-            { mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
-        );
-        WORLD.AttachComponent(hLeftCylObj, std::move(comLeftCyleMesh));
-        WORLD.AttachComponent(hLeftCylObj, NonAnimatedComponent(hLeftCylObj));
+		XMFLOAT3 leftSphereWorldTranslation = XMFLOAT3(-5.0f, 3.5f, -10.0f + i * 5.0f);
+		XMFLOAT3 rightSphereWorldTranslation = XMFLOAT3(+5.0f, 3.5f, -10.0f + i * 5.0f);
 
-        MeshComponent comRightCyleMesh(hRightCylObj, objCBIndexCounter++,
-            XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightCylWorldTranslation,
-            brickTexTransform,
-            { mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
-        );
-        WORLD.AttachComponent(hRightCylObj, std::move(comRightCyleMesh));
-        WORLD.AttachComponent(hRightCylObj, NonAnimatedComponent(hRightCylObj));
+		MeshComponent comLeftCyleMesh(hLeftCylObj, objCBIndexCounter++,
+			XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftCylWorldTranslation,
+			brickTexTransform,
+			{ mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
+		);
+		WORLD.AttachComponent(hLeftCylObj, std::move(comLeftCyleMesh));
+		WORLD.AttachComponent(hLeftCylObj, NonAnimatedComponent(hLeftCylObj));
 
-        MeshComponent comLeftSphereMesh(hLeftCylObj, objCBIndexCounter++,
-            XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftSphereWorldTranslation,
-            XMMatrixIdentity(),
-            { mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
-        );
-        WORLD.AttachComponent(hLeftSphereObj, std::move(comLeftSphereMesh));
-        WORLD.AttachComponent(hLeftSphereObj, NonAnimatedComponent(hLeftSphereObj));
+		MeshComponent comRightCyleMesh(hRightCylObj, objCBIndexCounter++,
+			XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightCylWorldTranslation,
+			brickTexTransform,
+			{ mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
+		);
+		WORLD.AttachComponent(hRightCylObj, std::move(comRightCyleMesh));
+		WORLD.AttachComponent(hRightCylObj, NonAnimatedComponent(hRightCylObj));
 
-        MeshComponent comRightSphereMesh(hLeftCylObj, objCBIndexCounter++,
-            XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightSphereWorldTranslation,
-            XMMatrixIdentity(),
-            { mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
-        );
-        WORLD.AttachComponent(hRightSphereObj, std::move(comRightSphereMesh));
-        WORLD.AttachComponent(hRightSphereObj, NonAnimatedComponent(hRightSphereObj));
-    }
+		MeshComponent comLeftSphereMesh(hLeftCylObj, objCBIndexCounter++,
+			XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftSphereWorldTranslation,
+			XMMatrixIdentity(),
+			{ mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
+		);
+		WORLD.AttachComponent(hLeftSphereObj, std::move(comLeftSphereMesh));
+		WORLD.AttachComponent(hLeftSphereObj, NonAnimatedComponent(hLeftSphereObj));
 
-    auto hPlayerOneHandSwordObj = WORLD.AddObject();
-    MeshComponent comPlayerOneHandSwordMesh(hPlayerOneHandSwordObj, objCBIndexCounter++,
-        XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
-        XMMatrixIdentity(),
-        { mGeometries["equipmentGeo"].get() }, { "OneHandSword0" }, { mMaterials["equipment"].get() }
-    );
-    auto comEquipment = EquipmentComponent(hPlayerOneHandSwordObj);
-    comEquipment.equipmentType = EquipmentTypes::OneHandSword;
-    WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comPlayerOneHandSwordMesh));
-    WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comEquipment));
+		MeshComponent comRightSphereMesh(hLeftCylObj, objCBIndexCounter++,
+			XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightSphereWorldTranslation,
+			XMMatrixIdentity(),
+			{ mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
+		);
+		WORLD.AttachComponent(hRightSphereObj, std::move(comRightSphereMesh));
+		WORLD.AttachComponent(hRightSphereObj, NonAnimatedComponent(hRightSphereObj));
+	}
 
-    auto hPlayerShieldObj = WORLD.AddObject();
-    MeshComponent comPlayerShieldMesh(hPlayerShieldObj, objCBIndexCounter++,
-        XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
-        XMMatrixIdentity(),
-        { mGeometries["equipmentGeo"].get() }, { "Shield0" }, { mMaterials["equipment"].get() }
-    );
-    auto comShieldEquipment = EquipmentComponent(hPlayerShieldObj);
-    comShieldEquipment.equipmentType = EquipmentTypes::Shield;
-    WORLD.AttachComponent(hPlayerShieldObj, std::move(comPlayerShieldMesh));
-    WORLD.AttachComponent(hPlayerShieldObj, std::move(comShieldEquipment));
+	auto hPlayerOneHandSwordObj = WORLD.AddObject();
+	MeshComponent comPlayerOneHandSwordMesh(hPlayerOneHandSwordObj, objCBIndexCounter++,
+		XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+		XMMatrixIdentity(),
+		{ mGeometries["equipmentGeo"].get() }, { "OneHandSword0" }, { mMaterials["equipment"].get() }
+	);
+	auto comEquipment = EquipmentComponent(hPlayerOneHandSwordObj);
+	comEquipment.equipmentType = EquipmentTypes::OneHandSword;
+	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comPlayerOneHandSwordMesh));
+	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comEquipment));
 
-    UINT skinnedCBIndexCounter = 0;
-    UINT equippedCBIndexCounter = 0;
-    auto hPlayerObj = WORLD.AddObject();
+	auto hPlayerShieldObj = WORLD.AddObject();
+	MeshComponent comPlayerShieldMesh(hPlayerShieldObj, objCBIndexCounter++,
+		XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+		XMMatrixIdentity(),
+		{ mGeometries["equipmentGeo"].get() }, { "Shield0" }, { mMaterials["equipment"].get() }
+	);
+	auto comShieldEquipment = EquipmentComponent(hPlayerShieldObj);
+	comShieldEquipment.equipmentType = EquipmentTypes::Shield;
+	WORLD.AttachComponent(hPlayerShieldObj, std::move(comPlayerShieldMesh));
+	WORLD.AttachComponent(hPlayerShieldObj, std::move(comShieldEquipment));
 
-    MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
-    int subMeshCounts = skinnedModelGeo->DrawArgs.size();
-    std::vector<MeshGeometry*> geometries(subMeshCounts, skinnedModelGeo);
-    std::vector<std::string> subMeshNames;
-    std::vector<Material*> materials;
-    int idx = 0;
-    for (const auto& [subMeshName, subMesh] : skinnedModelGeo->DrawArgs) {
-        subMeshNames.push_back(subMeshName);
-        materials.push_back(mMaterials[mSkinnedMats[idx].Name].get());
-    }
+	UINT skinnedCBIndexCounter = 0;
+	UINT equippedCBIndexCounter = 0;
+	auto hPlayerObj = WORLD.AddObject();
 
-    XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
-    XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
-    XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 0.5f, 0.0f);
+	MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
+	int subMeshCounts = skinnedModelGeo->DrawArgs.size();
+	std::vector<MeshGeometry*> geometries(subMeshCounts, skinnedModelGeo);
+	std::vector<std::string> subMeshNames;
+	std::vector<Material*> materials;
+	int idx = 0;
+	for (const auto& [subMeshName, subMesh] : skinnedModelGeo->DrawArgs) {
+		subMeshNames.push_back(subMeshName);
+		materials.push_back(mMaterials[mSkinnedMats[idx].Name].get());
+	}
 
-    MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
-        modelScale, modelRot, modelOffset, XMMatrixIdentity(),
-        geometries, subMeshNames, materials
-    );
-    WORLD.AttachComponent(hPlayerObj, std::move(comPlayerMesh));
+	XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
+	XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
+	XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 0.5f, 0.0f);
 
-    AnimationComponent comPlayerAnimation{ hPlayerObj };
-    comPlayerAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
-    comPlayerAnimation.mSkinnedModelAnimationController = 
-        std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
-    std::string clipName = std::string("Skeleton|OneHand_Base_Attack_E_2.001");
-    comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(clipName);
-    EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
-    WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
-    WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));
+	MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
+		modelScale, modelRot, modelOffset, XMMatrixIdentity(),
+		geometries, subMeshNames, materials
+	);
+	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerMesh));
 
-    auto comEquipped = EquippedComponent(hPlayerOneHandSwordObj);
-    comEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::OneHandSword];
-    comEquipped.owner = hPlayerObj;
-    WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comEquipped));
+	AnimationComponent comPlayerAnimation{ hPlayerObj };
+	comPlayerAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
+	comPlayerAnimation.mSkinnedModelAnimationController =
+		std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
+	std::string clipName = std::string("Skeleton|OneHand_Base_Attack_E_2.001");
+	comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(clipName);
+	EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
+	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
+	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));
 
-    auto comShieldEquipped = EquippedComponent(hPlayerShieldObj);
-    comShieldEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::Shield];
-    comShieldEquipped.owner = hPlayerObj;
-    WORLD.AttachComponent(hPlayerShieldObj, std::move(comShieldEquipped));
+	Ref<CharacterVirtualSettings> settings = new CharacterVirtualSettings();
+	float characterHeight = 1.2f;
+	float characterRadius = 0.3f;
+	settings->mShape = CapsuleShapeSettings(0.5f * characterHeight, characterRadius).Create().Get();
+	settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
+	physics::CharacterBody comPlayerController{
+		hPlayerObj,
+		*settings,
+		Vec3(0.f, 10.f, 0.f),
+		Quat::sIdentity(),
+		PHYSICS_SYSTEM,
+		std::make_unique<MyCharacterContactListener>()
+	};
+	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerController));
+
+	auto comEquipped = EquippedComponent(hPlayerOneHandSwordObj);
+	comEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::OneHandSword];
+	comEquipped.owner = hPlayerObj;
+	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comEquipped));
+
+	auto comShieldEquipped = EquippedComponent(hPlayerShieldObj);
+	comShieldEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::Shield];
+	comShieldEquipped.owner = hPlayerObj;
+	WORLD.AttachComponent(hPlayerShieldObj, std::move(comShieldEquipped));
 }
 
 void GameFramework::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems)
 {
-    auto skinnedCB = mCurrFrameResource->SkinnedCB->Resource();
+	auto skinnedCB = mCurrFrameResource->SkinnedCB->Resource();
 
-    // For each render item...
-    for (const auto& ritem : ritems)
-    {
-        auto hOwner = ritem.GetOwner();
-        auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
+	// For each render item...
+	for (const auto& ritem : ritems)
+	{
+		auto hOwner = ritem.GetOwner();
+		auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
 
-        if (pMesh) {
-            D3D12_GPU_VIRTUAL_ADDRESS skinnedCBAddress = skinnedCB->GetGPUVirtualAddress() + ritem.SkinnedCBIndex * skinnedCBByteSize;
-            cmdList->SetGraphicsRootConstantBufferView(1, skinnedCBAddress);
-            DrawRenderItem(cmdList, pMesh);
-        }
-    }
+		if (pMesh) {
+			D3D12_GPU_VIRTUAL_ADDRESS skinnedCBAddress = skinnedCB->GetGPUVirtualAddress() + ritem.SkinnedCBIndex * skinnedCBByteSize;
+			cmdList->SetGraphicsRootConstantBufferView(1, skinnedCBAddress);
+			DrawRenderItem(cmdList, pMesh);
+		}
+	}
 }
 
 void GameFramework::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<EquippedComponent>& ritems)
 {
-    auto equippedObjectCB = mCurrFrameResource->EquippedObjectCB->Resource();
+	auto equippedObjectCB = mCurrFrameResource->EquippedObjectCB->Resource();
 
-    // For each render item...
-    for (const auto& ritem : ritems)
-    {
-        auto hOwner = ritem.GetOwner();
-        auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
+	// For each render item...
+	for (const auto& ritem : ritems)
+	{
+		auto hOwner = ritem.GetOwner();
+		auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
 
-        if (pMesh) {
-            D3D12_GPU_VIRTUAL_ADDRESS equippedCBAddress = equippedObjectCB->GetGPUVirtualAddress() + ritem.EquippedCBIndex * equippedObjCBByteSize;
-            cmdList->SetGraphicsRootConstantBufferView(6, equippedCBAddress);
-            DrawRenderItem(cmdList, pMesh);
-        }
-    }
+		if (pMesh) {
+			D3D12_GPU_VIRTUAL_ADDRESS equippedCBAddress = equippedObjectCB->GetGPUVirtualAddress() + ritem.EquippedCBIndex * equippedObjCBByteSize;
+			cmdList->SetGraphicsRootConstantBufferView(6, equippedCBAddress);
+			DrawRenderItem(cmdList, pMesh);
+		}
+	}
 }
 
 void GameFramework::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<NonAnimatedComponent>& ritems)
 {
-    // For each render item...
-    for (const auto& ritem : ritems)
-    {
-        auto hOwner = ritem.GetOwner();
-        auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
-        if (pMesh) {
-            cmdList->SetGraphicsRootConstantBufferView(1, 0);
-            DrawRenderItem(cmdList, pMesh);
-        }
-    }
+	// For each render item...
+	for (const auto& ritem : ritems)
+	{
+		auto hOwner = ritem.GetOwner();
+		auto pMesh = WORLD.GetComponent<MeshComponent>(hOwner);
+		if (pMesh) {
+			cmdList->SetGraphicsRootConstantBufferView(1, 0);
+			DrawRenderItem(cmdList, pMesh);
+		}
+	}
 }
 
-void GameFramework::DrawRenderItem(ID3D12GraphicsCommandList* cmdList, const MeshComponent const * ritem)
+void GameFramework::DrawRenderItem(ID3D12GraphicsCommandList* cmdList, const MeshComponent const* ritem)
 {
-    auto objectCB = mCurrFrameResource->ObjectCB->Resource();
-    D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ritem->ObjCBIndex * objCBByteSize;
+	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
+	D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ritem->ObjCBIndex * objCBByteSize;
 
-    cmdList->SetGraphicsRootConstantBufferView(0, objCBAddress);
+	cmdList->SetGraphicsRootConstantBufferView(0, objCBAddress);
 
-    for (const auto& di : ritem->drawItems) {
-        auto vbv = di.Geo->VertexBufferView();
-        auto ibv = di.Geo->IndexBufferView();
-        cmdList->IASetVertexBuffers(0, 1, &vbv);
-        cmdList->IASetIndexBuffer(&ibv);
-        cmdList->IASetPrimitiveTopology(di.PrimitiveType);
+	for (const auto& di : ritem->drawItems) {
+		auto vbv = di.Geo->VertexBufferView();
+		auto ibv = di.Geo->IndexBufferView();
+		cmdList->IASetVertexBuffers(0, 1, &vbv);
+		cmdList->IASetIndexBuffer(&ibv);
+		cmdList->IASetPrimitiveTopology(di.PrimitiveType);
 
-        cmdList->DrawIndexedInstanced(di.IndexCount, 1, di.StartIndexLocation, di.BaseVertexLocation, 0);
-    }
+		cmdList->DrawIndexedInstanced(di.IndexCount, 1, di.StartIndexLocation, di.BaseVertexLocation, 0);
+	}
 
 }
 
 void GameFramework::DrawSceneToShadowMap()
 {
-    auto vp = mShadowMap->Viewport();
-    mCommandList->RSSetViewports(1, &vp);
-    auto sr = mShadowMap->ScissorRect();
-    mCommandList->RSSetScissorRects(1, &sr);
+	auto vp = mShadowMap->Viewport();
+	mCommandList->RSSetViewports(1, &vp);
+	auto sr = mShadowMap->ScissorRect();
+	mCommandList->RSSetScissorRects(1, &sr);
 
-    // Change to DEPTH_WRITE.
-    auto grToDw = CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(),
-        D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-    mCommandList->ResourceBarrier(1, &grToDw);
+	// Change to DEPTH_WRITE.
+	auto grToDw = CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(),
+		D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+	mCommandList->ResourceBarrier(1, &grToDw);
 
-    // Clear the back buffer and depth buffer.
-    mCommandList->ClearDepthStencilView(mShadowMap->Dsv(),
-        D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	// Clear the back buffer and depth buffer.
+	mCommandList->ClearDepthStencilView(mShadowMap->Dsv(),
+		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-    // Specify the buffers we are going to render to.
-    auto dsv = mShadowMap->Dsv();
-    mCommandList->OMSetRenderTargets(0, nullptr, false, &dsv);
+	// Specify the buffers we are going to render to.
+	auto dsv = mShadowMap->Dsv();
+	mCommandList->OMSetRenderTargets(0, nullptr, false, &dsv);
 
-    // Bind the pass constant buffer for the shadow map pass.
-    UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-    auto passCB = mCurrFrameResource->PassCB->Resource();
-    D3D12_GPU_VIRTUAL_ADDRESS passCBAddress = passCB->GetGPUVirtualAddress() + 1 * passCBByteSize;
-    mCommandList->SetGraphicsRootConstantBufferView(2, passCBAddress);
+	// Bind the pass constant buffer for the shadow map pass.
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+	D3D12_GPU_VIRTUAL_ADDRESS passCBAddress = passCB->GetGPUVirtualAddress() + 1 * passCBByteSize;
+	mCommandList->SetGraphicsRootConstantBufferView(2, passCBAddress);
 
-    mCommandList->SetPipelineState(mPSOs["shadow_opaque"].Get());
-    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
+	mCommandList->SetPipelineState(mPSOs["shadow_opaque"].Get());
+	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
 
-    mCommandList->SetPipelineState(mPSOs["equippedShadow_opaque"].Get());
-    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
+	mCommandList->SetPipelineState(mPSOs["equippedShadow_opaque"].Get());
+	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
 
-    mCommandList->SetPipelineState(mPSOs["skinnedShadow_opaque"].Get());
-    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<AnimationComponent>());
+	mCommandList->SetPipelineState(mPSOs["skinnedShadow_opaque"].Get());
+	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<AnimationComponent>());
 
-    // Change back to GENERIC_READ so we can read the texture in a shader.
-    auto dwToRg = CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(),
-        D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ);
-    mCommandList->ResourceBarrier(1, &dwToRg);
+	// Change back to GENERIC_READ so we can read the texture in a shader.
+	auto dwToRg = CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(),
+		D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ);
+	mCommandList->ResourceBarrier(1, &dwToRg);
 }
 
 void GameFramework::DrawNormalsAndDepth()
 {
-    mCommandList->RSSetViewports(1, &mScreenViewport);
-    mCommandList->RSSetScissorRects(1, &mScissorRect);
+	mCommandList->RSSetViewports(1, &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
-    auto normalMap = mSsao->NormalMap();
-    auto normalMapRtv = mSsao->NormalMapRtv();
+	auto normalMap = mSsao->NormalMap();
+	auto normalMapRtv = mSsao->NormalMapRtv();
 
-    // Change to RENDER_TARGET.
-    auto grToRt = CD3DX12_RESOURCE_BARRIER::Transition(normalMap,
-        D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    mCommandList->ResourceBarrier(1, &grToRt);
+	// Change to RENDER_TARGET.
+	auto grToRt = CD3DX12_RESOURCE_BARRIER::Transition(normalMap,
+		D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	mCommandList->ResourceBarrier(1, &grToRt);
 
-    // Clear the screen normal map and depth buffer.
-    float clearValue[] = { 0.0f, 0.0f, 1.0f, 0.0f };
-    mCommandList->ClearRenderTargetView(normalMapRtv, clearValue, 0, nullptr);
-    mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	// Clear the screen normal map and depth buffer.
+	float clearValue[] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	mCommandList->ClearRenderTargetView(normalMapRtv, clearValue, 0, nullptr);
+	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-    // Specify the buffers we are going to render to.
-    auto dsv = DepthStencilView();
-    mCommandList->OMSetRenderTargets(1, &normalMapRtv, true, &dsv);
+	// Specify the buffers we are going to render to.
+	auto dsv = DepthStencilView();
+	mCommandList->OMSetRenderTargets(1, &normalMapRtv, true, &dsv);
 
-    // Bind the constant buffer for this pass.
-    auto passCB = mCurrFrameResource->PassCB->Resource();
-    mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+	// Bind the constant buffer for this pass.
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 
-    mCommandList->SetPipelineState(mPSOs["drawNormals"].Get());
-    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
+	mCommandList->SetPipelineState(mPSOs["drawNormals"].Get());
+	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
 
-    mCommandList->SetPipelineState(mPSOs["equippedDrawNormals"].Get());
-    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
+	mCommandList->SetPipelineState(mPSOs["equippedDrawNormals"].Get());
+	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<EquippedComponent>());
 
-    mCommandList->SetPipelineState(mPSOs["skinnedDrawNormals"].Get());
-    DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<AnimationComponent>());
+	mCommandList->SetPipelineState(mPSOs["skinnedDrawNormals"].Get());
+	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<AnimationComponent>());
 
-    // Change back to GENERIC_READ so we can read the texture in a shader.
-    auto rtToGr = CD3DX12_RESOURCE_BARRIER::Transition(normalMap,
-        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ);
-    mCommandList->ResourceBarrier(1, &rtToGr);
+	// Change back to GENERIC_READ so we can read the texture in a shader.
+	auto rtToGr = CD3DX12_RESOURCE_BARRIER::Transition(normalMap,
+		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ);
+	mCommandList->ResourceBarrier(1, &rtToGr);
 }
 CD3DX12_CPU_DESCRIPTOR_HANDLE GameFramework::GetCpuSrv(int index)const
 {
-    auto srv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-    srv.Offset(index, mCbvSrvUavDescriptorSize);
-    return srv;
+	auto srv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	srv.Offset(index, mCbvSrvUavDescriptorSize);
+	return srv;
 }
 
 CD3DX12_GPU_DESCRIPTOR_HANDLE GameFramework::GetGpuSrv(int index)const
 {
-    auto srv = CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-    srv.Offset(index, mCbvSrvUavDescriptorSize);
-    return srv;
+	auto srv = CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+	srv.Offset(index, mCbvSrvUavDescriptorSize);
+	return srv;
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE GameFramework::GetDsv(int index)const
 {
-    auto dsv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mDsvHeap->GetCPUDescriptorHandleForHeapStart());
-    dsv.Offset(index, mDsvDescriptorSize);
-    return dsv;
+	auto dsv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mDsvHeap->GetCPUDescriptorHandleForHeapStart());
+	dsv.Offset(index, mDsvDescriptorSize);
+	return dsv;
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE GameFramework::GetRtv(int index)const
 {
-    auto rtv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
-    rtv.Offset(index, mRtvDescriptorSize);
-    return rtv;
+	auto rtv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+	rtv.Offset(index, mRtvDescriptorSize);
+	return rtv;
 }
 
 std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> GameFramework::GetStaticSamplers()
 {
-    // Applications usually only need a handful of samplers.  So just define them all up front
-    // and keep them available as part of the root signature.  
+	// Applications usually only need a handful of samplers.  So just define them all up front
+	// and keep them available as part of the root signature.  
 
-    const CD3DX12_STATIC_SAMPLER_DESC pointWrap(
-        0, // shaderRegister
-        D3D12_FILTER_MIN_MAG_MIP_POINT, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
+	const CD3DX12_STATIC_SAMPLER_DESC pointWrap(
+		0, // shaderRegister
+		D3D12_FILTER_MIN_MAG_MIP_POINT, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
 
-    const CD3DX12_STATIC_SAMPLER_DESC pointClamp(
-        1, // shaderRegister
-        D3D12_FILTER_MIN_MAG_MIP_POINT, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
+	const CD3DX12_STATIC_SAMPLER_DESC pointClamp(
+		1, // shaderRegister
+		D3D12_FILTER_MIN_MAG_MIP_POINT, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
 
-    const CD3DX12_STATIC_SAMPLER_DESC linearWrap(
-        2, // shaderRegister
-        D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
+	const CD3DX12_STATIC_SAMPLER_DESC linearWrap(
+		2, // shaderRegister
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
 
-    const CD3DX12_STATIC_SAMPLER_DESC linearClamp(
-        3, // shaderRegister
-        D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
+	const CD3DX12_STATIC_SAMPLER_DESC linearClamp(
+		3, // shaderRegister
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
 
-    const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrap(
-        4, // shaderRegister
-        D3D12_FILTER_ANISOTROPIC, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressW
-        0.0f,                             // mipLODBias
-        8);                               // maxAnisotropy
+	const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrap(
+		4, // shaderRegister
+		D3D12_FILTER_ANISOTROPIC, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressW
+		0.0f,                             // mipLODBias
+		8);                               // maxAnisotropy
 
-    const CD3DX12_STATIC_SAMPLER_DESC anisotropicClamp(
-        5, // shaderRegister
-        D3D12_FILTER_ANISOTROPIC, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressW
-        0.0f,                              // mipLODBias
-        8);                                // maxAnisotropy
+	const CD3DX12_STATIC_SAMPLER_DESC anisotropicClamp(
+		5, // shaderRegister
+		D3D12_FILTER_ANISOTROPIC, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  // addressW
+		0.0f,                              // mipLODBias
+		8);                                // maxAnisotropy
 
-    const CD3DX12_STATIC_SAMPLER_DESC shadow(
-        6, // shaderRegister
-        D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, // filter
-        D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressU
-        D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressV
-        D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressW
-        0.0f,                               // mipLODBias
-        16,                                 // maxAnisotropy
-        D3D12_COMPARISON_FUNC_LESS_EQUAL,
-        D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
+	const CD3DX12_STATIC_SAMPLER_DESC shadow(
+		6, // shaderRegister
+		D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressW
+		0.0f,                               // mipLODBias
+		16,                                 // maxAnisotropy
+		D3D12_COMPARISON_FUNC_LESS_EQUAL,
+		D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
 
-    return {
-        pointWrap, pointClamp,
-        linearWrap, linearClamp,
-        anisotropicWrap, anisotropicClamp,
-        shadow
-    };
+	return {
+		pointWrap, pointClamp,
+		linearWrap, linearClamp,
+		anisotropicWrap, anisotropicClamp,
+		shadow
+	};
 }

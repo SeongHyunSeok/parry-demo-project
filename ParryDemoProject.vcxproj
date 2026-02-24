@@ -169,6 +169,7 @@
     <ClInclude Include="Core\game_object.h" />
     <ClInclude Include="Core\id.h" />
     <ClInclude Include="Core\id_manager.h" />
+    <ClInclude Include="Core\inputs.h" />
     <ClInclude Include="Core\Light.h" />
     <ClInclude Include="Core\Material.h" />
     <ClInclude Include="Core\MeshGeometry.h" />

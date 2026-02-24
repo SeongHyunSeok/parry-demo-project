@@ -185,6 +185,9 @@
     <ClInclude Include="Core\Components\Equipment.h">
       <Filter>Core\Components</Filter>
     </ClInclude>
+    <ClInclude Include="Core\inputs.h">
+      <Filter>Core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Core\Shaders\Common.hlsl">

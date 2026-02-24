@@ -20,6 +20,7 @@
 #include "Jolt/Physics/Body/MotionType.h"
 #include "Jolt/Physics/Collision/ObjectLayer.h"
 #include "Jolt/Physics/Collision/Shape/Shape.h"
+#include "Jolt/Physics/Character/CharacterVirtual.h"
 #include "Jolt/Physics/EActivation.h"
 #include "component.h"
 #include "event.h"
@@ -34,6 +35,11 @@ static constexpr ObjectLayer NON_MOVING = 0;
 static constexpr ObjectLayer MOVING = 1;
 static constexpr ObjectLayer NUM_LAYERS = 2;
 }; // namespace Layers
+
+	class MyCharacterContactListener : public CharacterContactListener {
+
+	};
+
 /// Class that determines if two object layers can collide
 class ObjectLayerPairFilterImpl : public ObjectLayerPairFilter {
 public:
@@ -120,9 +126,9 @@ public:
 };
 
 #ifdef PHYSICS_MAIN
-PhysicsSystem physics_system;
+	PhysicsSystem PHYSICS_SYSTEM;
 #else
-extern PhysicsSystem physics_system;
+	extern PhysicsSystem PHYSICS_SYSTEM;
 #endif
 
 void InitPhysics();
@@ -155,7 +161,7 @@ protected:
   }
   ~RigidBody() {
     if (body) {
-      auto &lInterface = physics_system.GetBodyInterfaceNoLock();
+      auto &lInterface = PHYSICS_SYSTEM.GetBodyInterfaceNoLock();
       auto userdata = body->GetUserData();
       if (userdata != 0) {
         delete reinterpret_cast<BodyMetadata *>(userdata);
@@ -244,6 +250,37 @@ public:
     bodyInterface.AddBody(body->GetID(), EActivation::DontActivate);
   }
   virtual EventPropagation HandleEvent(Event &event) override;
+	};
+
+	class CharacterBody : public Component {
+	private:
+		std::unique_ptr<CharacterVirtual> controller = nullptr;
+
+	public:
+        Vec3 movementDir = Vec3::sZero();
+        Vec3 desiredVelocity = Vec3::sZero();
+        bool allowSliding = false;
+        bool inJump = false;
+        const float speed = 10.f;
+        const float jumpSpeed = 6.f;
+
+		CharacterBody(Handle<GameObject> owner,
+			const CharacterVirtualSettings& settings,
+			RVec3Arg position,
+			QuatArg rotation,
+			PhysicsSystem& physicsSystem,
+			std::unique_ptr<CharacterContactListener> listener) : Component{ owner } {
+			controller.reset(new CharacterVirtual{ &settings, position, rotation, (uint64)this, &physicsSystem });
+			controller->SetListener(listener.release());
+		}
+		CharacterBody(const CharacterBody&) = delete;
+		CharacterBody& operator=(const CharacterBody&) = delete;
+		CharacterBody(CharacterBody&&) = default;
+		CharacterBody& operator=(CharacterBody&&) = default;
+
+        CharacterVirtual& GetController() { return *controller; }
+        const CharacterVirtual& GetController() const { return *controller; }
+		void Update(float dt);
 };
 
 void UpdatePhysicsSystem(float deltaTime);
