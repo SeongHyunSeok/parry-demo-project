@@ -454,13 +454,13 @@ void FbxBinLoader::LoadAnimationFromFile(
 				std::forward_as_tuple(6),
 				std::forward_as_tuple(9, 'g'));
 			auto token = std::string(pstrToken);
-			animationsSets->animationSets.emplace(
+			animationsSets->rawAnimationSets.emplace(
 				std::piecewise_construct,
 				std::forward_as_tuple(pstrToken),
 				std::forward_as_tuple(startTime, endTime, token)
 			);
 
-			AnimationSet& newAnimationSet = animationsSets->animationSets[std::string(pstrToken)];
+			AnimationSet& newAnimationSet = animationsSets->rawAnimationSets[std::string(pstrToken)];
 
 			FileUtility::ReadStringFromFile(file, pstrToken);
 			if (!strcmp(pstrToken, "<AnimationLayers>:"))

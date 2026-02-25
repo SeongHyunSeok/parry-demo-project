@@ -111,32 +111,46 @@ struct EquipmentLocation {
 	DirectX::XMFLOAT4X4 localTransform = MathHelper::Identity4x4();
 };
 
+enum class AnimationType : UINT {
+	Idle = 0,
+	WalkForward,
+	WalkForwordLeft45,
+	WalkForwordRight45,
+	WalkLeft,
+	WalkRight,
+	WalkBackword,
+	WalkBackwordLeft45,
+	WalkBackwordRight45
+};
+
 class AnimationSets
 {
 public:
 	AnimationSets();
 	~AnimationSets();
 public:
-	std::unordered_map<std::string, AnimationSet> animationSets;
+	std::unordered_map<AnimationType, AnimationSet*> animationSets;
 	std::vector<int> boneHierarchy;
 	std::vector<DirectX::XMFLOAT4X4> boneOffsets;
 	std::unordered_map<EquipmentTypes, EquipmentLocation> equipmentLocations;
+	std::unordered_map<std::string, AnimationSet> rawAnimationSets;
 public:
+	void generateAnimationSet(const std::unordered_map<AnimationType, std::string>& mvTypeToName);
 	UINT BoneCount()const;
 
-	float GetClipStartTime(const std::string& clipName)const;
-	float GetClipEndTime(const std::string& clipName)const;
+	float GetClipStartTime(const AnimationType clipType)const;
+	float GetClipEndTime(const AnimationType clipType)const;
 
 	// In a real project, you'd want to cache the result if there was a chance
 	// that you were calling this several times with the same clipName at 
 	// the same timePos.
-	void GetFinalTransforms(const std::string& clipName, float timePos,
+	void GetFinalTransforms(const AnimationType clipType, float timePos,
 		std::vector<DirectX::XMFLOAT4X4>& toRootTransforms,
-		std::vector<DirectX::XMFLOAT4X4>& finalTransforms)const;
+		std::vector<DirectX::XMFLOAT4X4>& finalTransforms,
+		DirectX::XMFLOAT3& rootBoneTranslation)const;
 };
 
-
-enum class AnimationType : int {
+enum class AnimationPlayType : int {
 	Once = 0,
 	Loop,
 };
@@ -153,15 +167,17 @@ public:
 	float startPosition = 0.0f;
 	float endPosition = 0.0f;
 
-	AnimationType animationType = AnimationType::Loop;
+	AnimationPlayType animationPlayType = AnimationPlayType::Loop;
 public:
 	void SetSpeed(float speed) { this->speed = speed; }
 	void SetPeriod(float startPosition, float endPosition) {
 		this->startPosition = startPosition;
 		this->endPosition = endPosition;
 	}
-	void SetAnimationType(AnimationType type) { animationType = type; }
+	void SetAnimationPlayType(AnimationPlayType type) { animationPlayType = type; }
 };
+
+const UINT gAnimationBlendingFrameCount = 10;
 
 class AnimationController
 {
@@ -174,24 +190,32 @@ public:
 	std::vector<XMFLOAT4X4> toRootTransforms;
 	std::vector<DirectX::XMFLOAT4X4> finalTransforms;
 
-	std::unordered_map<std::string, AnimationTrack> animationTracks;
+	XMFLOAT3 prevRootBoneTranslation = { 0.0f, 0.0f,0.0f };
+	XMFLOAT3 rootBoneTranslation = { 0.0f, 0.0f,0.0f };
+	bool startAnimation = true;
+
+	std::unordered_map<AnimationType, AnimationTrack> animationTracks;
 
 	float timePosition = 0.0f;
-	std::string curAnimationName;
+	AnimationType curAnimationMovementType = AnimationType::Idle;
 public:
-	void SetAnimation(std::string& name);
+	bool ChangeAnimationByUserInput(AnimationType type);
+	void SetAnimation(AnimationType type);
 
-	void SetTrackSpeed(std::string& name, float speed);
-	void SetTrackPeriod(std::string& name, float startTime, float endTime);
-	void SetTrackAnimationType(std::string& name, AnimationType type);
+	void SetTrackSpeed(AnimationType type, float speed);
+	void SetTrackPeriod(AnimationType type, float startTime, float endTime);
+	void SetTrackAnimationType(AnimationType type, AnimationPlayType playType);
 
 	// Called every frame and increments the time position, interpolates the 
 	// animations for each bone based on the current animation clip, and 
 	// generates the final transforms which are ultimately set to the effect
 	// for processing in the vertex shader.
 	void AdvanceTime(float elapsedTime);
+
+	DirectX::XMFLOAT3 GetRootBoneTranslationDiff();
 private:
 	void UpdateTimePosition(float elapsedTime, const AnimationTrack& track);
+	bool IsChangeAnimationByUserInputPossible();
 };
 
 struct CALLBACKKEY

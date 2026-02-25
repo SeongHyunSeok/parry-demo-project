@@ -19,6 +19,7 @@
 #include "Components/Animation.h"
 #include "Components/Sky.h"
 #include "Components/Equipment.h"
+#include "Components/Player.h"
 #include "../Model/GeometryGenerator.h"
 #include "../Model/Animation.h"
 #include "../Model/ModelLoader.h"
@@ -212,7 +213,7 @@ private:
 
     FbxBinLoader fbxBinLoader;
     UINT mSkinnedSrvHeapStart = 0;
-    std::string mSkinnedModelFilename = "Models\\Robot.bin";
+    std::string mSkinnedModelFilename = "Models\\RPGModel.bin";
     std::vector<std::string> mSkinnedTextureNames;
     std::vector<MaterialInfo> mSkinnedMats;
     

@@ -985,10 +985,12 @@ void GameFramework::OnMouseMove(WPARAM btnState, int x, int y)
 
 void GameFramework::OnKeyboardInput(float dt)
 {
+    auto& player = WORLD.GetComponents<PlayerComponent>().front();
     auto& camera = GetMainCamera();
 
-    if (GetAsyncKeyState('W') & 0x8000)
-        camera.Walk(10.0f * dt);
+    if (GetAsyncKeyState('W') & 0x8000) {
+        player.Move(MoveType::Walk, MoveDirection::Forward);
+    }
 
     if (GetAsyncKeyState('S') & 0x8000)
         camera.Walk(-10.0f * dt);
@@ -1000,6 +1002,50 @@ void GameFramework::OnKeyboardInput(float dt)
         camera.Strafe(10.0f * dt);
 
     camera.UpdateViewMatrix();
+
+    player.UpdateInput();
+
+
+
+
+
+    //static UCHAR pKeysBuffer[256];
+    //bool bProcessedByScene = false;
+    //if (GetKeyboardState(pKeysBuffer) && m_pScene) bProcessedByScene = m_pScene->ProcessInput(pKeysBuffer);
+    //if (!bProcessedByScene)
+    //{
+    //    DWORD dwDirection = 0;
+    //    if (pKeysBuffer[VK_UP] & 0xF0) dwDirection |= DIR_FORWARD;
+    //    if (pKeysBuffer[VK_DOWN] & 0xF0) dwDirection |= DIR_BACKWARD;
+    //    if (pKeysBuffer[VK_LEFT] & 0xF0) dwDirection |= DIR_LEFT;
+    //    if (pKeysBuffer[VK_RIGHT] & 0xF0) dwDirection |= DIR_RIGHT;
+    //    if (pKeysBuffer[VK_PRIOR] & 0xF0) dwDirection |= DIR_UP;
+    //    if (pKeysBuffer[VK_NEXT] & 0xF0) dwDirection |= DIR_DOWN;
+
+    //    float cxDelta = 0.0f, cyDelta = 0.0f;
+    //    POINT ptCursorPos;
+    //    if (GetCapture() == m_hWnd)
+    //    {
+    //        SetCursor(NULL);
+    //        GetCursorPos(&ptCursorPos);
+    //        cxDelta = (float)(ptCursorPos.x - m_ptOldCursorPos.x) / 3.0f;
+    //        cyDelta = (float)(ptCursorPos.y - m_ptOldCursorPos.y) / 3.0f;
+    //        SetCursorPos(m_ptOldCursorPos.x, m_ptOldCursorPos.y);
+    //    }
+
+    //    if ((dwDirection != 0) || (cxDelta != 0.0f) || (cyDelta != 0.0f))
+    //    {
+    //        if (cxDelta || cyDelta)
+    //        {
+    //            if (pKeysBuffer[VK_RBUTTON] & 0xF0)
+    //                m_pPlayer->Rotate(cyDelta, 0.0f, -cxDelta);
+    //            else
+    //                m_pPlayer->Rotate(cyDelta, cxDelta, 0.0f);
+    //        }
+    //        if (dwDirection) m_pPlayer->Move(dwDirection, 2.25f, true);
+    //    }
+    //}
+    //m_pPlayer->Update(m_GameTimer.GetTimeElapsed());
 }
 
 void GameFramework::AnimateMaterials(float dt)
@@ -1068,6 +1114,18 @@ void GameFramework::UpdateSkinnedCBs(float dt)
             &skinnedConstants.BoneTransforms[0]);
 
         currSkinnedCB->CopyData(0, skinnedConstants);
+
+        XMFLOAT3 translationDiff = comAni.mSkinnedModelAnimationController->GetRootBoneTranslationDiff();
+
+        auto pComMesh = WORLD.GetComponent<MeshComponent>(comAni.GetOwner());
+        if (pComMesh) {
+            pComMesh->Translation = Vector3::Add(pComMesh->Translation,
+                XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+            pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslation.y;
+            //pComMesh->Translation = Vector3::Add(pComMesh->Translation,
+            //    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+            pComMesh->NumFramesDirty = gNumFrameResources;
+        }
     }
 
     for (auto& comEquipped : WORLD.GetComponents<EquippedComponent>()) {
@@ -1794,13 +1852,20 @@ void GameFramework::LoadSkinnedModel()
 
     mSkinnedAnimationSets.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(mSkinnedModelFilename), 
+        std::forward_as_tuple(mSkinnedModelFilename),
         std::forward_as_tuple(std::make_unique<AnimationSets>()));
     fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
         skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
 
     // Robot.txt
+    std::unordered_map<AnimationType, std::string> moveTypeToName =
+    {
+        {AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
+        {AnimationType::WalkForward,"Skeleton|Walk_A_F"}
+    };
+
     auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
+    animationSet->generateAnimationSet(moveTypeToName);
     animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
         50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
         * XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
@@ -2387,7 +2452,9 @@ void GameFramework::BuildRenderItems()
 
     UINT skinnedCBIndexCounter = 0;
     UINT equippedCBIndexCounter = 0;
+    
     auto hPlayerObj = WORLD.AddObject();
+    WORLD.AttachComponent(hPlayerObj, PlayerComponent(hPlayerObj));
 
     MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
     int subMeshCounts = skinnedModelGeo->DrawArgs.size();
@@ -2402,7 +2469,7 @@ void GameFramework::BuildRenderItems()
 
     XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
     XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
-    XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 0.5f, 0.0f);
+    XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 2.8f, -5.0f);
 
     MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
         modelScale, modelRot, modelOffset, XMMatrixIdentity(),
@@ -2414,8 +2481,7 @@ void GameFramework::BuildRenderItems()
     comPlayerAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
     comPlayerAnimation.mSkinnedModelAnimationController = 
         std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
-    std::string clipName = std::string("Skeleton|OneHand_Base_Attack_E_2.001");
-    comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(clipName);
+    comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
     EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
     WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
     WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));
