@@ -69,6 +69,14 @@ public:
 /// An AnimationClip requires a BoneAnimation for every bone to form
 /// the animation clip.    
 ///</summary>
+
+struct BoneTransformInfo
+{
+	XMFLOAT3 scale = { 0.0f, 0.0f, 0.0f };
+	XMFLOAT3 rotation = { 0.0f, 0.0f, 0.0f };
+	XMFLOAT3 translation = { 0.0f, 0.0f, 0.0f };
+};
+
 class AnimationSet
 {
 public:
@@ -86,7 +94,11 @@ public:
 	float length = 0.0f;
 
 public:
-	void Interpolate(float timePosition, std::vector<DirectX::XMFLOAT4X4>& boneTransforms) const;
+	void Interpolate(
+		float timePosition, 
+		std::vector<BoneTransformInfo>& boneToParents,
+		DirectX::XMFLOAT3& rawRootBoneTranslation,
+		float totalWeight) const;
 
 	float GetClipStartTime()const;
 	float GetClipEndTime()const;
@@ -123,6 +135,17 @@ enum class AnimationType : UINT {
 	WalkBackwordRight45
 };
 
+struct AnimationPlayInfo {
+	AnimationType animationType = AnimationType::Idle;
+
+	float timePosition = 0.0f;
+
+	bool startingAnimation = true;
+
+	XMFLOAT3 prevRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
+	XMFLOAT3 curRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
+};
+
 class AnimationSets
 {
 public:
@@ -144,10 +167,14 @@ public:
 	// In a real project, you'd want to cache the result if there was a chance
 	// that you were calling this several times with the same clipName at 
 	// the same timePos.
-	void GetFinalTransforms(const AnimationType clipType, float timePos,
+	void GetFinalTransforms(
+		AnimationPlayInfo& playInfo,
 		std::vector<DirectX::XMFLOAT4X4>& toRootTransforms,
 		std::vector<DirectX::XMFLOAT4X4>& finalTransforms,
-		DirectX::XMFLOAT3& rootBoneTranslation)const;
+		DirectX::XMFLOAT3& rootBoneTranslation,
+		bool blending,
+		float blendingWeight,
+		AnimationPlayInfo* blendingTargetPlayInfo = nullptr)const;
 };
 
 enum class AnimationPlayType : int {
@@ -177,7 +204,8 @@ public:
 	void SetAnimationPlayType(AnimationPlayType type) { animationPlayType = type; }
 };
 
-const UINT gAnimationBlendingFrameCount = 10;
+const float gAnimationBlendingTime = 0.2f;
+const UINT gTotalAnimationPlayInfoCount = 2;
 
 class AnimationController
 {
@@ -190,14 +218,14 @@ public:
 	std::vector<XMFLOAT4X4> toRootTransforms;
 	std::vector<DirectX::XMFLOAT4X4> finalTransforms;
 
-	XMFLOAT3 prevRootBoneTranslation = { 0.0f, 0.0f,0.0f };
-	XMFLOAT3 rootBoneTranslation = { 0.0f, 0.0f,0.0f };
-	bool startAnimation = true;
-
 	std::unordered_map<AnimationType, AnimationTrack> animationTracks;
 
-	float timePosition = 0.0f;
-	AnimationType curAnimationMovementType = AnimationType::Idle;
+	XMFLOAT3 rootBoneTranslationResult = { 0.0f, 0.0f,0.0f };
+
+	bool blending = false;
+	float blendingWeight = 0.0f;
+	AnimationPlayInfo animationPlayInfos[2];
+	UINT curAnimationPlayIndex = 0;
 public:
 	bool ChangeAnimationByUserInput(AnimationType type);
 	void SetAnimation(AnimationType type);
@@ -214,8 +242,10 @@ public:
 
 	DirectX::XMFLOAT3 GetRootBoneTranslationDiff();
 private:
-	void UpdateTimePosition(float elapsedTime, const AnimationTrack& track);
+	void UpdateTimePosition(float elapsedTime);
+	void UpdateTimePosition(float elapsedTime, UINT playInfoIndex);
 	bool IsChangeAnimationByUserInputPossible();
+	DirectX::XMFLOAT3 CalcRawTranslationDiff(UINT playInfoIndex);
 };
 
 struct CALLBACKKEY

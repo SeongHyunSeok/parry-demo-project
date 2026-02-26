@@ -1121,7 +1121,7 @@ void GameFramework::UpdateSkinnedCBs(float dt)
         if (pComMesh) {
             pComMesh->Translation = Vector3::Add(pComMesh->Translation,
                 XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
-            pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslation.y;
+            pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslationResult.y;
             //pComMesh->Translation = Vector3::Add(pComMesh->Translation,
             //    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
             pComMesh->NumFramesDirty = gNumFrameResources;
@@ -2481,7 +2481,7 @@ void GameFramework::BuildRenderItems()
     comPlayerAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
     comPlayerAnimation.mSkinnedModelAnimationController = 
         std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
-    comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
+    //comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
     EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
     WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
     WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));

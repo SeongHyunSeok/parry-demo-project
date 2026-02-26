@@ -87,7 +87,11 @@ AnimationSet::~AnimationSet()
 {
 }
 
-void AnimationSet::Interpolate(float timePosition, std::vector<DirectX::XMFLOAT4X4>& boneToParents) const
+void AnimationSet::Interpolate(
+	float timePosition, 
+	std::vector<BoneTransformInfo>& boneToParents,
+	DirectX::XMFLOAT3& rawRootBoneTranslation,
+	float totalWeight) const
 {
 	for (int boneFrameIndex = 0; boneFrameIndex < boneToParents.size(); ++boneFrameIndex) {
 		XMFLOAT3 scaleResult = { 0.f, 0.f, 0.f };
@@ -118,11 +122,17 @@ void AnimationSet::Interpolate(float timePosition, std::vector<DirectX::XMFLOAT4
 				break;
 			}
 		}
+		if (boneFrameIndex == 0) {
+			rawRootBoneTranslation = translationResult;
+		}
+		boneToParents[boneFrameIndex].scale = Vector3::Add(boneToParents[boneFrameIndex].scale, scaleResult, totalWeight);
+		boneToParents[boneFrameIndex].rotation = Vector3::Add(boneToParents[boneFrameIndex].rotation, rotationResult, totalWeight);
+		boneToParents[boneFrameIndex].translation = Vector3::Add(boneToParents[boneFrameIndex].translation, translationResult, totalWeight);
 
-		XMMATRIX S = XMMatrixScaling(scaleResult.x, scaleResult.y, scaleResult.z);
-		XMMATRIX R = XMMatrixMultiply(XMMatrixMultiply(XMMatrixRotationX(rotationResult.x), XMMatrixRotationY(rotationResult.y)), XMMatrixRotationZ(rotationResult.z));
-		XMMATRIX T = XMMatrixTranslation(translationResult.x, translationResult.y, translationResult.z);
-		XMStoreFloat4x4(&boneToParents[boneFrameIndex], XMMatrixMultiply(XMMatrixMultiply(S, R), T));
+		//XMMATRIX S = XMMatrixScaling(scaleResult.x, scaleResult.y, scaleResult.z);
+		//XMMATRIX R = XMMatrixMultiply(XMMatrixMultiply(XMMatrixRotationX(rotationResult.x), XMMatrixRotationY(rotationResult.y)), XMMatrixRotationZ(rotationResult.z));
+		//XMMATRIX T = XMMatrixTranslation(translationResult.x, translationResult.y, translationResult.z);
+		//XMStoreFloat4x4(&boneToParents[boneFrameIndex], XMMatrixMultiply(XMMatrixMultiply(S, R), T));
 	}
 }
 
@@ -169,18 +179,50 @@ float AnimationSets::GetClipEndTime(const AnimationType clipType)const
 	return clip->second->GetClipEndTime();
 }
 
-void AnimationSets::GetFinalTransforms(const AnimationType clipType, float timePos,
+void AnimationSets::GetFinalTransforms(AnimationPlayInfo& playInfo,
 	std::vector<DirectX::XMFLOAT4X4>& toRootTransforms,
 	std::vector<DirectX::XMFLOAT4X4>& finalTransforms,
-	DirectX::XMFLOAT3& rootBoneTranslation) const
+	DirectX::XMFLOAT3& rootBoneTranslation,
+	bool blending,
+	float blendingWeight,
+	AnimationPlayInfo* blendingTargetPlayInfo) const
 {
 	UINT numBones = boneHierarchy.size();
 
-	std::vector<XMFLOAT4X4> toParentTransforms(numBones);
+	std::vector<BoneTransformInfo> toParentBoneTransformInfo(numBones);
+	auto clip = animationSets.find(playInfo.animationType);
+	clip->second->Interpolate(playInfo.timePosition,
+		toParentBoneTransformInfo, 
+		playInfo.curRootBoneRawTranslation,
+		1.0f - blendingWeight);
 
-	// Interpolate all the bones of this clip at the given time instance.
-	auto clip = animationSets.find(clipType);
-	clip->second->Interpolate(timePos,  toParentTransforms);
+	if (blending && blendingTargetPlayInfo) {
+		// Interpolate all the bones of this clip at the given time instance.
+		auto blendingTargetClip = animationSets.find(blendingTargetPlayInfo->animationType);
+		blendingTargetClip->second->Interpolate(
+			blendingTargetPlayInfo->timePosition,
+			toParentBoneTransformInfo, 
+			blendingTargetPlayInfo->curRootBoneRawTranslation,
+			blendingWeight);
+	}
+
+	std::vector<XMFLOAT4X4> toParentTransforms(numBones);
+	for (int boneFrameIndex = 0; boneFrameIndex < numBones; ++boneFrameIndex) {
+		XMMATRIX S = XMMatrixScaling(toParentBoneTransformInfo[boneFrameIndex].scale.x, toParentBoneTransformInfo[boneFrameIndex].scale.y, toParentBoneTransformInfo[boneFrameIndex].scale.z);
+		XMMATRIX R = XMMatrixMultiply(XMMatrixMultiply(XMMatrixRotationX(toParentBoneTransformInfo[boneFrameIndex].rotation.x), XMMatrixRotationY(toParentBoneTransformInfo[boneFrameIndex].rotation.y)), XMMatrixRotationZ(toParentBoneTransformInfo[boneFrameIndex].rotation.z));
+		XMMATRIX T = XMMatrixTranslation(toParentBoneTransformInfo[boneFrameIndex].translation.x, toParentBoneTransformInfo[boneFrameIndex].translation.y, toParentBoneTransformInfo[boneFrameIndex].translation.z);
+		XMStoreFloat4x4(&toParentTransforms[boneFrameIndex], XMMatrixMultiply(XMMatrixMultiply(S, R), T));
+	}
+
+	rootBoneTranslation = {
+		toParentTransforms[0]._41,
+		toParentTransforms[0]._42,
+		toParentTransforms[0]._43
+	};
+
+	toParentTransforms[0]._41 = 0;
+	toParentTransforms[0]._42 = 0;
+	toParentTransforms[0]._43 = 0;
 
 	//
 	// Traverse the hierarchy and transform all the bones to the root space.
@@ -188,14 +230,7 @@ void AnimationSets::GetFinalTransforms(const AnimationType clipType, float timeP
 
 	// The root bone has index 0.  The root bone has no parent, so its toRootTransform
 	// is just its local bone transform.
-	rootBoneTranslation = { 
-		toParentTransforms[0]._41,
-		toParentTransforms[0]._42,
-		toParentTransforms[0]._43
-	};
-	toParentTransforms[0]._41 = 0;
-	toParentTransforms[0]._42 = 0;
-	toParentTransforms[0]._43 = 0;
+
 	toRootTransforms[0] = toParentTransforms[0];
 
 	// Now find the toRootTransform of the children.
@@ -243,9 +278,14 @@ AnimationController::~AnimationController()
 
 void AnimationController::SetAnimation(AnimationType type)
 {
-	timePosition = 0.0f;
-	curAnimationMovementType = type;
-	startAnimation = true;
+	curAnimationPlayIndex = (curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount;
+	blending = true;
+	AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
+	playInfo.animationType = type;
+	playInfo.timePosition = 0.0f;
+	playInfo.startingAnimation = true;
+	playInfo.prevRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
+	playInfo.curRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
 }
 
 void AnimationController::SetTrackSpeed(AnimationType type, float speed)
@@ -266,48 +306,97 @@ void AnimationController::SetTrackAnimationType(AnimationType type, AnimationPla
 
 void AnimationController::AdvanceTime(float elapsedTime)
 {
-	const AnimationTrack& track = animationTracks[curAnimationMovementType];
+	UpdateTimePosition(elapsedTime);
 
-	UpdateTimePosition(elapsedTime * track.speed, track);
+	animationPlayInfos[curAnimationPlayIndex].prevRootBoneRawTranslation
+		= animationPlayInfos[curAnimationPlayIndex].curRootBoneRawTranslation;
+
+	blendingWeight = 0.0f;
+	UINT prevAniPlayInfoIndex = (curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount;
+	if (blending) {
+		animationPlayInfos[prevAniPlayInfoIndex].prevRootBoneRawTranslation
+			= animationPlayInfos[prevAniPlayInfoIndex].curRootBoneRawTranslation;
+
+		if (animationPlayInfos[curAnimationPlayIndex].timePosition <= gAnimationBlendingTime) {
+			blendingWeight = (1.0f - animationPlayInfos[curAnimationPlayIndex].timePosition / gAnimationBlendingTime);
+		}
+		else {
+			blending = false;
+		}
+	}
 
 	// Compute the final transforms for this time position.
-	prevRootBoneTranslation = rootBoneTranslation;
-	animationSets->GetFinalTransforms(curAnimationMovementType, timePosition, toRootTransforms, finalTransforms, rootBoneTranslation);
+	animationSets->GetFinalTransforms(
+		animationPlayInfos[curAnimationPlayIndex],
+		toRootTransforms, finalTransforms, 
+		rootBoneTranslationResult,
+		blending, blendingWeight, &animationPlayInfos[prevAniPlayInfoIndex]
+	);
 }
 
-void AnimationController::UpdateTimePosition(float elapsedTime, const AnimationTrack& track)
+void AnimationController::UpdateTimePosition(float elapsedTime)
 {
-	timePosition += elapsedTime;
+	if (blending) {
+		for (UINT i = 0; i < gTotalAnimationPlayInfoCount; ++i) {
+			UpdateTimePosition(elapsedTime, i);
+		}
+	}
+	else {
+		UpdateTimePosition(elapsedTime, curAnimationPlayIndex);
+	}
+}
+
+void AnimationController::UpdateTimePosition(float elapsedTime, UINT playInfoIndex) {
+	 AnimationPlayInfo& playInfo = animationPlayInfos[playInfoIndex];
+	const AnimationTrack& track = animationTracks[playInfo.animationType];
+
+	playInfo.timePosition += elapsedTime * track.speed;
 
 	switch (track.animationPlayType)
 	{
 	case AnimationPlayType::Loop:
 	{
-		if (timePosition < track.startPosition) timePosition = track.startPosition;
-		if (timePosition > track.endPosition) timePosition = track.startPosition;
+		if (playInfo.timePosition < track.startPosition) playInfo.timePosition = track.startPosition;
+		if (playInfo.timePosition > track.endPosition) playInfo.timePosition = track.startPosition;
 		break;
 	}
 	case AnimationPlayType::Once:
-		if (timePosition < track.startPosition) timePosition = track.startPosition;
-		if (timePosition > track.endPosition) timePosition = track.endPosition;
+		if (playInfo.timePosition < track.startPosition) playInfo.timePosition = track.startPosition;
+		if (playInfo.timePosition > track.endPosition) playInfo.timePosition = track.endPosition;
 		break;
 	}
-	if (timePosition <= track.startPosition || timePosition >= track.endPosition) {
-		startAnimation = true;
+	if (playInfo.timePosition <= track.startPosition || playInfo.timePosition >= track.endPosition) {
+		playInfo.startingAnimation = true;
 	}
 }
 
 DirectX::XMFLOAT3 AnimationController::GetRootBoneTranslationDiff() {
-	if (startAnimation) {
-		startAnimation = false;
-		return XMFLOAT3{ 0.0f, 0.0f,0.0f };
+	XMFLOAT3 rawTransDiff = CalcRawTranslationDiff(curAnimationPlayIndex);
+
+	if (!blending) {
+		return rawTransDiff;
 	}
-	return Vector3::Subtract(rootBoneTranslation, prevRootBoneTranslation);
+
+	XMFLOAT3 rawBlendingTransDiff = CalcRawTranslationDiff((curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount);
+
+	return Vector3::Add(
+		Vector3::ScalarProduct(rawTransDiff, 1 - blendingWeight, false),
+		Vector3::ScalarProduct(rawBlendingTransDiff, blendingWeight, false)
+	);
+}
+
+DirectX::XMFLOAT3 AnimationController::CalcRawTranslationDiff(UINT playInfoIndex) {
+	AnimationPlayInfo& playInfo = animationPlayInfos[playInfoIndex];
+	if (playInfo.startingAnimation) {
+		playInfo.startingAnimation = false;
+		return XMFLOAT3{ 0.0f, 0.0f, 0.0f };
+	}
+	return Vector3::Subtract(playInfo.curRootBoneRawTranslation, playInfo.prevRootBoneRawTranslation);
 }
 
 bool AnimationController::ChangeAnimationByUserInput(AnimationType type) {
 	if (IsChangeAnimationByUserInputPossible()) {
-		if (curAnimationMovementType != type) {
+		if (animationPlayInfos[curAnimationPlayIndex].animationType != type) {
 			SetAnimation(type);
 		}
 		return true;
