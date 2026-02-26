@@ -278,14 +278,16 @@ AnimationController::~AnimationController()
 
 void AnimationController::SetAnimation(AnimationType type)
 {
-	curAnimationPlayIndex = (curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount;
-	blending = true;
-	AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
-	playInfo.animationType = type;
-	playInfo.timePosition = 0.0f;
-	playInfo.startingAnimation = true;
-	playInfo.prevRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
-	playInfo.curRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
+	if (animationPlayInfos[curAnimationPlayIndex].animationType != type) {
+		curAnimationPlayIndex = (curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount;
+		blending = true;
+		AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
+		playInfo.animationType = type;
+		playInfo.timePosition = 0.0f;
+		playInfo.startingAnimation = true;
+		playInfo.prevRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
+		playInfo.curRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
+	}
 }
 
 void AnimationController::SetTrackSpeed(AnimationType type, float speed)
@@ -392,19 +394,4 @@ DirectX::XMFLOAT3 AnimationController::CalcRawTranslationDiff(UINT playInfoIndex
 		return XMFLOAT3{ 0.0f, 0.0f, 0.0f };
 	}
 	return Vector3::Subtract(playInfo.curRootBoneRawTranslation, playInfo.prevRootBoneRawTranslation);
-}
-
-bool AnimationController::ChangeAnimationByUserInput(AnimationType type) {
-	if (IsChangeAnimationByUserInputPossible()) {
-		if (animationPlayInfos[curAnimationPlayIndex].animationType != type) {
-			SetAnimation(type);
-		}
-		return true;
-	}
-	return false;
-}
-
-bool AnimationController::IsChangeAnimationByUserInputPossible() {
-	// TODO
-	return true;
 }

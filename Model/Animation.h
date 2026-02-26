@@ -227,7 +227,6 @@ public:
 	AnimationPlayInfo animationPlayInfos[2];
 	UINT curAnimationPlayIndex = 0;
 public:
-	bool ChangeAnimationByUserInput(AnimationType type);
 	void SetAnimation(AnimationType type);
 
 	void SetTrackSpeed(AnimationType type, float speed);
@@ -244,7 +243,6 @@ public:
 private:
 	void UpdateTimePosition(float elapsedTime);
 	void UpdateTimePosition(float elapsedTime, UINT playInfoIndex);
-	bool IsChangeAnimationByUserInputPossible();
 	DirectX::XMFLOAT3 CalcRawTranslationDiff(UINT playInfoIndex);
 };
 

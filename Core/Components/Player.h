@@ -53,7 +53,8 @@ private:
         auto pComAni = WORLD.GetComponent<AnimationComponent>(owner);
 
         if (pComAni) {
-            return pComAni->mSkinnedModelAnimationController->ChangeAnimationByUserInput(type);
+            pComAni->mSkinnedModelAnimationController->SetAnimation(type);
+            return true;
         }
         return false;
     };
