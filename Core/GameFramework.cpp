@@ -1012,10 +1012,10 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 		dir.z -= 1;
 
 	if (inputManager.IsPressed('A'))
-		dir.x -= 1;
+		dir.x += 1;
 
 	if (inputManager.IsPressed('D'))
-		dir.x += 1;
+		dir.x -= 1;
 
 	player.Move(MoveType::Walk, dir);
 
@@ -1115,14 +1115,14 @@ void GameFramework::UpdateSkinnedCBs(float dt)
 			auto pComChar = WORLD.GetComponent<physics::CharacterBody>(comAni.GetOwner());
 			if (pComChar) {
 				// TODO: Handle animations marked as vertically movable
-				physics::Vec3 offset{ pComMesh->Scale.x * translationDiff.x, 0, pComMesh->Scale.z * translationDiff.z };
+				physics::Vec3 offset{ -pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z };
 				// We divide the offset by dt to make it a velocity
 				pComChar->targetVelocity = offset / dt;
 			}
 			else {
 				// TO DO!!
 				pComMesh->Translation = Vector3::Add(pComMesh->Translation,
-					XMFLOAT3(pComMesh->Scale.x * translationDiff.x, 0, pComMesh->Scale.z * translationDiff.z));
+					XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
 				pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslationResult.y;
 				//pComMesh->Translation = Vector3::Add(pComMesh->Translation,
 				//    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
@@ -1862,17 +1862,65 @@ void GameFramework::LoadSkinnedModel()
 
     // Robot.txt
     std::unordered_map<AnimationType, std::string> moveTypeToName =
-    {
-        {AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
-        {AnimationType::WalkForward,"Skeleton|Walk_A_F"},
-        {AnimationType::WalkForwardRight45,"Skeleton|Walk_A_F_R45"},
-        {AnimationType::WalkForwardLeft45,"Skeleton|Walk_A_F_L45"},
-        {AnimationType::WalkBackwardRight45,"Skeleton|Walk_A_B_R45"},
-        {AnimationType::WalkBackwardLeft45,"Skeleton|Walk_A_B_L45"},
-        {AnimationType::WalkRight,"Skeleton|Walk_A_F_R90_A"},
-        {AnimationType::WalkLeft,"Skeleton|Walk_A_F_L90_A"},
-        {AnimationType::WalkBackward,"Skeleton|Walk_A_B"}
-    };
+	{
+		{AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
+		// Walk
+		{AnimationType::WalkForward,"Skeleton|Walk_A_F"},
+		{AnimationType::WalkForwardRight45,"Skeleton|Walk_A_F_R45"},
+		{AnimationType::WalkForwardLeft45,"Skeleton|Walk_A_F_L45"},
+		{AnimationType::WalkBackwardRight45,"Skeleton|Walk_A_B_R45"},
+		{AnimationType::WalkBackwardLeft45,"Skeleton|Walk_A_B_L45"},
+		{AnimationType::WalkRight,"Skeleton|Walk_A_F_R90_A"},
+		{AnimationType::WalkLeft,"Skeleton|Walk_A_F_L90_A"},
+		{AnimationType::WalkBackward,"Skeleton|Walk_A_B"},
+		// Roll
+		{AnimationType::RollForward,"Skeleton|Low_Roll_F" },
+		{AnimationType::RollForwardRight45,"Skeleton|Low_Roll_F_R45"},
+		{AnimationType::RollForwardLeft45,"Skeleton|Low_Roll_F_L45"},
+		{AnimationType::RollBackwardRight45,"Skeleton|Low_Roll_B_R45"},
+		{AnimationType::RollBackwardLeft45,"Skeleton|Low_Roll_B_L45"},
+		{AnimationType::RollRight,"Skeleton|Low_Roll_F_R90"},
+		{AnimationType::RollLeft,"Skeleton|Low_Roll_F_L90"},
+		{AnimationType::RollBackward,"Skeleton|Low_Roll_B"},
+		// Hit
+		{ AnimationType::HitBackType1,"Skeleton|Hit_B_1" },
+		{ AnimationType::HitBackType1,"Skeleton|Hit_B_2" },
+		{ AnimationType::HitBackType1,"Skeleton|Hit_B_3" },
+		{ AnimationType::HitBackType1,"Skeleton|Hit_F_1" },
+		{ AnimationType::HitBackType1,"Skeleton|Hit_F_2" },
+		{ AnimationType::HitBackType1,"Skeleton|Hit_F_3" },
+		{ AnimationType::HitBackType1,"Skeleton|Hit_F_Down" },
+		{ AnimationType::HitBackType1,"Skeleton|Hit_F_Up" },
+		// OneHandBaseAttack
+		{ AnimationType::OneHandBaseAttackTypeC_1,"Skeleton|OneHand_Base_Attack_C_1" },
+		{ AnimationType::OneHandBaseAttackTypeC_2,"Skeleton|OneHand_Base_Attack_C_2" },
+		{ AnimationType::OneHandBaseAttackTypeC_3,"Skeleton|OneHand_Base_Attack_C_3" },
+		{ AnimationType::OneHandBaseAttackTypeC_4,"Skeleton|OneHand_Base_Attack_C_4" },
+		{ AnimationType::OneHandBaseAttackTypeC_5,"Skeleton|OneHand_Base_Attack_C_5" },
+		{ AnimationType::OneHandBaseAttackTypeC_6,"Skeleton|OneHand_Base_Attack_C_6" },
+		{ AnimationType::OneHandBaseAttackTypeC_7,"Skeleton|OneHand_Base_Attack_C_7" },
+		{ AnimationType::OneHandBaseAttackTypeC_8,"Skeleton|OneHand_Base_Attack_C_8" },
+		// OneHandBaseFatal
+		{ AnimationType::OneHandBaseFatalAttack,"Skeleton|OneHand_Base_Fatal_Attack_2" },
+		{ AnimationType::OneHandBaseFatalHit,"Skeleton|OneHand_Base_Fatal_Hit_2" },
+		// OneHandBaseShield
+		{ AnimationType::OneHandBaseShieldStart,"Skeleton|OneHand_Base_Shield_Block_Start_1" },
+		{ AnimationType::OneHandBaseShieldIdle,"Skeleton|OneHand_Base_Shield_Block_Idle_1" },
+		{ AnimationType::OneHandBaseShieldEnd,"Skeleton|OneHand_Base_Shield_Block_End_1" },
+		{ AnimationType::OneHandBaseShieldHitType1,"Skeleton|OneHand_Base_Shield_Block_Hit_1" },
+		{ AnimationType::OneHandBaseShieldHitType2,"Skeleton|OneHand_Base_Shield_Block_Hit_2" },
+		{ AnimationType::OneHandBaseShieldParryType1,"Skeleton|OneHand_Base_Shield_Block_Parry_2" },
+		{ AnimationType::OneHandBaseShieldParryType2,"Skeleton|OneHand_Base_Shield_Block_Parry_3" },
+		// OneHandBaseShieldWalk
+		{AnimationType::OnewHandBaseShieldWalkForward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F"},
+		{AnimationType::OnewHandBaseShieldWalkForwardRight45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_R45"},
+		{AnimationType::OnewHandBaseShieldWalkForwardLeft45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_L45"},
+		{AnimationType::OnewHandBaseShieldWalkBackwardRight45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B_R45"},
+		{AnimationType::OnewHandBaseShieldWalkBackwardLeft45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B_L45"},
+		{AnimationType::OnewHandBaseShieldWalkRight,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_R90_A"},
+		{AnimationType::OnewHandBaseShieldWalkLeft,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_L90_A"},
+		{AnimationType::OnewHandBaseShieldWalkBackward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B"}
+	};
 
     auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
     animationSet->generateAnimationSet(moveTypeToName);
@@ -2485,8 +2533,8 @@ void GameFramework::BuildRenderItems()
 	}
 
 	XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
-	XMFLOAT3 modelRot = XMFLOAT3(0.0f, 0.0f, 0.0f); //MathHelper::Pi
-	XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 2.8f, -5.0f);
+	XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f); //MathHelper::Pi
+	XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 0.f, -5.0f);
 
 	MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
 		modelScale, modelRot, modelOffset, XMMatrixIdentity(),
@@ -2506,7 +2554,8 @@ void GameFramework::BuildRenderItems()
 	Ref<CharacterVirtualSettings> settings = new CharacterVirtualSettings();
 	float characterHeight = 5.0f;
 	float characterRadius = 0.3f;
-	settings->mShape = CapsuleShapeSettings(0.5f * characterHeight, characterRadius).Create().Get();
+	RotatedTranslatedShapeSettings shapeSetting{ Vec3{0.f, 0.5f * characterHeight + characterRadius, 0.f}, Quat::sIdentity(), new CapsuleShape(0.5f * characterHeight, characterRadius) };
+	settings->mShape = shapeSetting.Create().Get();
 	settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
 	physics::CharacterBody comPlayerController{
 		hPlayerObj,

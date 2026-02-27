@@ -125,6 +125,7 @@ struct EquipmentLocation {
 
 enum class AnimationType : UINT {
 	Idle = 0,
+	// Wakl
 	WalkForward,
 	WalkForwardLeft45,
 	WalkForwardRight45,
@@ -132,7 +133,54 @@ enum class AnimationType : UINT {
 	WalkRight,
 	WalkBackward,
 	WalkBackwardLeft45,
-	WalkBackwardRight45
+	WalkBackwardRight45,
+	// Roll
+	RollForward,
+	RollForwardLeft45,
+	RollForwardRight45,
+	RollLeft,
+	RollRight,
+	RollBackward,
+	RollBackwardLeft45,
+	RollBackwardRight45,
+	// Hit
+	HitBackType1,
+	HitBackType2,
+	HitBackType3,
+	HitFrontType1,
+	HitFrontType2,
+	HitFrontType3,
+	HitFrontDown,
+	HitFrontUp,
+	// OneHandBaseAttack
+	OneHandBaseAttackTypeC_1,
+	OneHandBaseAttackTypeC_2,
+	OneHandBaseAttackTypeC_3,
+	OneHandBaseAttackTypeC_4,
+	OneHandBaseAttackTypeC_5,
+	OneHandBaseAttackTypeC_6,
+	OneHandBaseAttackTypeC_7,
+	OneHandBaseAttackTypeC_8,
+	// OneHandBaseFatal
+	OneHandBaseFatalAttack,
+	OneHandBaseFatalHit,
+	// OneHandBaseShield
+	OneHandBaseShieldStart,
+	OneHandBaseShieldIdle,
+	OneHandBaseShieldEnd,
+	OneHandBaseShieldHitType1,
+	OneHandBaseShieldHitType2,
+	OneHandBaseShieldParryType1,
+	OneHandBaseShieldParryType2,
+	// OneHandBaseShieldWalk
+	OnewHandBaseShieldWalkForward,
+	OnewHandBaseShieldWalkForwardLeft45,
+	OnewHandBaseShieldWalkForwardRight45,
+	OnewHandBaseShieldWalkLeft,
+	OnewHandBaseShieldWalkRight,
+	OnewHandBaseShieldWalkBackward,
+	OnewHandBaseShieldWalkBackwardLeft45,
+	OnewHandBaseShieldWalkBackwardRight45
 };
 
 struct AnimationPlayInfo {
@@ -186,15 +234,15 @@ struct AnimationTrack
 {
 public:
 	AnimationTrack() { throw std::runtime_error("unreachable code!"); };
-	AnimationTrack(float startTime, float endTime) 
-		: startPosition(startTime), endPosition(endTime) {}
+	AnimationTrack(float startTime, float endTime, AnimationPlayType playType)
+		: startPosition(startTime), endPosition(endTime), animationPlayType(playType) {}
 	~AnimationTrack() {}
 public:
 	float speed = 1.0f;
 	float startPosition = 0.0f;
 	float endPosition = 0.0f;
 
-	AnimationPlayType animationPlayType = AnimationPlayType::Loop;
+	AnimationPlayType animationPlayType = AnimationPlayType::Once;
 public:
 	void SetSpeed(float speed) { this->speed = speed; }
 	void SetPeriod(float startPosition, float endPosition) {

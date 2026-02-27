@@ -221,7 +221,7 @@ void AnimationSets::GetFinalTransforms(AnimationPlayInfo& playInfo,
 	};
 
 	toParentTransforms[0]._41 = 0;
-	toParentTransforms[0]._42 = 0;
+	//toParentTransforms[0]._42 = 0;
 	toParentTransforms[0]._43 = 0;
 
 	//
@@ -264,11 +264,39 @@ AnimationController::AnimationController(AnimationSets* animationSets)
 	finalTransforms.resize(animationSets->BoneCount());
 	toRootTransforms.resize(animationSets->BoneCount());
 
+	std::vector<AnimationType> loopPlayTypes = {
+		AnimationType::Idle,
+		AnimationType::WalkForward,
+		AnimationType::WalkForwardLeft45,
+		AnimationType::WalkForwardRight45,
+		AnimationType::WalkLeft,
+		AnimationType::WalkRight,
+		AnimationType::WalkBackward,
+		AnimationType::WalkBackwardLeft45,
+		AnimationType::WalkBackwardRight45,
+		AnimationType::OneHandBaseShieldIdle,
+		AnimationType::OnewHandBaseShieldWalkForward,
+		AnimationType::OnewHandBaseShieldWalkForwardLeft45,
+		AnimationType::OnewHandBaseShieldWalkForwardRight45,
+		AnimationType::OnewHandBaseShieldWalkLeft,
+		AnimationType::OnewHandBaseShieldWalkRight,
+		AnimationType::OnewHandBaseShieldWalkBackward,
+		AnimationType::OnewHandBaseShieldWalkBackwardLeft45,
+		AnimationType::OnewHandBaseShieldWalkBackwardRight45
+	};
+
 	for (const auto& it : animationSets->animationSets) {
+		AnimationPlayType playType = AnimationPlayType::Once;
+
+		const auto findResult = std::find(loopPlayTypes.begin(), loopPlayTypes.end(), it.first);
+		if (findResult != loopPlayTypes.end()) {
+			playType = AnimationPlayType::Loop;
+		}
+
 		animationTracks.emplace(
 			std::piecewise_construct,
 			std::forward_as_tuple(it.first),
-			std::forward_as_tuple(it.second->GetClipStartTime(), it.second->GetClipEndTime()));
+			std::forward_as_tuple(it.second->GetClipStartTime(), it.second->GetClipEndTime(), playType));
 	}
 }
 
