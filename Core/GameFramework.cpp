@@ -988,64 +988,25 @@ void GameFramework::OnKeyboardInput(float dt)
     auto& player = WORLD.GetComponents<PlayerComponent>().front();
     auto& camera = GetMainCamera();
 
-    if (GetAsyncKeyState('W') & 0x8000) {
-        player.Move(MoveType::Walk, MoveDirection::Forward);
-    }
+    XMINT3 dir = { 0, 0, 0 };
+
+    if (GetAsyncKeyState('W') & 0x8000)
+        dir.z += 1;
 
     if (GetAsyncKeyState('S') & 0x8000)
-        camera.Walk(-10.0f * dt);
+        dir.z -= 1;
 
     if (GetAsyncKeyState('A') & 0x8000)
-        camera.Strafe(-10.0f * dt);
+        dir.x -= 1;
 
     if (GetAsyncKeyState('D') & 0x8000)
-        camera.Strafe(10.0f * dt);
+        dir.x += 1;
+
+    player.Move(MoveType::Walk, dir);
 
     camera.UpdateViewMatrix();
 
     player.UpdateInput();
-
-
-
-
-
-    //static UCHAR pKeysBuffer[256];
-    //bool bProcessedByScene = false;
-    //if (GetKeyboardState(pKeysBuffer) && m_pScene) bProcessedByScene = m_pScene->ProcessInput(pKeysBuffer);
-    //if (!bProcessedByScene)
-    //{
-    //    DWORD dwDirection = 0;
-    //    if (pKeysBuffer[VK_UP] & 0xF0) dwDirection |= DIR_FORWARD;
-    //    if (pKeysBuffer[VK_DOWN] & 0xF0) dwDirection |= DIR_BACKWARD;
-    //    if (pKeysBuffer[VK_LEFT] & 0xF0) dwDirection |= DIR_LEFT;
-    //    if (pKeysBuffer[VK_RIGHT] & 0xF0) dwDirection |= DIR_RIGHT;
-    //    if (pKeysBuffer[VK_PRIOR] & 0xF0) dwDirection |= DIR_UP;
-    //    if (pKeysBuffer[VK_NEXT] & 0xF0) dwDirection |= DIR_DOWN;
-
-    //    float cxDelta = 0.0f, cyDelta = 0.0f;
-    //    POINT ptCursorPos;
-    //    if (GetCapture() == m_hWnd)
-    //    {
-    //        SetCursor(NULL);
-    //        GetCursorPos(&ptCursorPos);
-    //        cxDelta = (float)(ptCursorPos.x - m_ptOldCursorPos.x) / 3.0f;
-    //        cyDelta = (float)(ptCursorPos.y - m_ptOldCursorPos.y) / 3.0f;
-    //        SetCursorPos(m_ptOldCursorPos.x, m_ptOldCursorPos.y);
-    //    }
-
-    //    if ((dwDirection != 0) || (cxDelta != 0.0f) || (cyDelta != 0.0f))
-    //    {
-    //        if (cxDelta || cyDelta)
-    //        {
-    //            if (pKeysBuffer[VK_RBUTTON] & 0xF0)
-    //                m_pPlayer->Rotate(cyDelta, 0.0f, -cxDelta);
-    //            else
-    //                m_pPlayer->Rotate(cyDelta, cxDelta, 0.0f);
-    //        }
-    //        if (dwDirection) m_pPlayer->Move(dwDirection, 2.25f, true);
-    //    }
-    //}
-    //m_pPlayer->Update(m_GameTimer.GetTimeElapsed());
 }
 
 void GameFramework::AnimateMaterials(float dt)
@@ -1119,8 +1080,9 @@ void GameFramework::UpdateSkinnedCBs(float dt)
 
         auto pComMesh = WORLD.GetComponent<MeshComponent>(comAni.GetOwner());
         if (pComMesh) {
+            // TO DO!!!
             pComMesh->Translation = Vector3::Add(pComMesh->Translation,
-                XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+                XMFLOAT3(pComMesh->Scale.x * translationDiff.x, 0, pComMesh->Scale.z * translationDiff.z));
             pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslationResult.y;
             //pComMesh->Translation = Vector3::Add(pComMesh->Translation,
             //    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
@@ -1861,7 +1823,14 @@ void GameFramework::LoadSkinnedModel()
     std::unordered_map<AnimationType, std::string> moveTypeToName =
     {
         {AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
-        {AnimationType::WalkForward,"Skeleton|Walk_A_F"}
+        {AnimationType::WalkForward,"Skeleton|Walk_A_F"},
+        {AnimationType::WalkForwardRight45,"Skeleton|Walk_A_F_R45"},
+        {AnimationType::WalkForwardLeft45,"Skeleton|Walk_A_F_L45"},
+        {AnimationType::WalkBackwardRight45,"Skeleton|Walk_A_B_R45"},
+        {AnimationType::WalkBackwardLeft45,"Skeleton|Walk_A_B_L45"},
+        {AnimationType::WalkRight,"Skeleton|Walk_A_F_R90_A"},
+        {AnimationType::WalkLeft,"Skeleton|Walk_A_F_L90_A"},
+        {AnimationType::WalkBackward,"Skeleton|Walk_A_B"}
     };
 
     auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
@@ -2468,7 +2437,7 @@ void GameFramework::BuildRenderItems()
     }
 
     XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
-    XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
+    XMFLOAT3 modelRot = XMFLOAT3(0.0f, 0.0f, 0.0f); //MathHelper::Pi
     XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 2.8f, -5.0f);
 
     MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
