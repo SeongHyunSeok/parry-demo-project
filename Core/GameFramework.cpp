@@ -1001,9 +1001,10 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 {
 	using namespace physics;
 	const auto& inputManager = InputManager::GetInstance();
+	auto& player = WORLD.GetComponents<PlayerComponent>().front();
 
 	if (inputManager.IsPressed('W'))
-		camera.Walk(10.0f * dt);
+		player.Move(MoveType::Walk, MoveDirection::Forward);
 
 	if (inputManager.IsPressed('S'))
 		camera.Walk(-10.0f * dt);
@@ -1032,6 +1033,8 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 		}
 		break;
 	}
+
+	player.UpdateInput();
 }
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {
@@ -1113,8 +1116,20 @@ void GameFramework::UpdateSkinnedCBs(float dt)
 			std::end(comAni.mSkinnedModelAnimationController->finalTransforms),
 			&skinnedConstants.BoneTransforms[0]);
 
-		currSkinnedCB->CopyData(0, skinnedConstants);
-	}
+        currSkinnedCB->CopyData(0, skinnedConstants);
+
+        XMFLOAT3 translationDiff = comAni.mSkinnedModelAnimationController->GetRootBoneTranslationDiff();
+
+        auto pComMesh = WORLD.GetComponent<MeshComponent>(comAni.GetOwner());
+        if (pComMesh) {
+            pComMesh->Translation = Vector3::Add(pComMesh->Translation,
+                XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+            pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslationResult.y;
+            //pComMesh->Translation = Vector3::Add(pComMesh->Translation,
+            //    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+            pComMesh->NumFramesDirty = gNumFrameResources;
+        }
+    }
 
 	for (auto& comEquipped : WORLD.GetComponents<EquippedComponent>()) {
 		auto hEquippedObj = comEquipped.GetOwner();
@@ -1838,23 +1853,30 @@ void GameFramework::LoadSkinnedModel()
 	std::vector<UINT> indices32bit;
 	std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
 
-	mSkinnedAnimationSets.emplace(
-		std::piecewise_construct,
-		std::forward_as_tuple(mSkinnedModelFilename),
-		std::forward_as_tuple(std::make_unique<AnimationSets>()));
-	fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
-		skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
+    mSkinnedAnimationSets.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(mSkinnedModelFilename),
+        std::forward_as_tuple(std::make_unique<AnimationSets>()));
+    fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
+        skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
 
-	// Robot.txt
-	auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
-	animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
-		50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
-		* XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
-	);
-	animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
-		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
-		* XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
-	);
+    // Robot.txt
+    std::unordered_map<AnimationType, std::string> moveTypeToName =
+    {
+        {AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
+        {AnimationType::WalkForward,"Skeleton|Walk_A_F"}
+    };
+
+    auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
+    animationSet->generateAnimationSet(moveTypeToName);
+    animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
+        50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
+        * XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
+    );
+    animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
+        12, XMMatrixScaling(0.7f, 0.7f, 0.7f)* XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
+        * XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
+    );
 
 	std::vector<std::uint16_t> indices;
 	indices.reserve(indices32bit.size());
@@ -2440,7 +2462,9 @@ void GameFramework::BuildRenderItems()
 
 	UINT skinnedCBIndexCounter = 0;
 	UINT equippedCBIndexCounter = 0;
+
 	auto hPlayerObj = WORLD.AddObject();
+	WORLD.AttachComponent(hPlayerObj, PlayerComponent(hPlayerObj));
 
 	MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
 	int subMeshCounts = skinnedModelGeo->DrawArgs.size();
@@ -2455,7 +2479,7 @@ void GameFramework::BuildRenderItems()
 
 	XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
 	XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
-	XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 0.5f, 0.0f);
+	XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 2.8f, -5.0f);
 
 	MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
 		modelScale, modelRot, modelOffset, XMMatrixIdentity(),
@@ -2467,14 +2491,13 @@ void GameFramework::BuildRenderItems()
 	comPlayerAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
 	comPlayerAnimation.mSkinnedModelAnimationController =
 		std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
-	std::string clipName = std::string("Skeleton|OneHand_Base_Attack_E_2.001");
-	comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(clipName);
+	//comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(clipName);
 	EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));
 
 	Ref<CharacterVirtualSettings> settings = new CharacterVirtualSettings();
-	float characterHeight = 1.2f;
+	float characterHeight = 5.0f;
 	float characterRadius = 0.3f;
 	settings->mShape = CapsuleShapeSettings(0.5f * characterHeight, characterRadius).Create().Get();
 	settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
