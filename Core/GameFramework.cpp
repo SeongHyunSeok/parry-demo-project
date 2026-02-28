@@ -1002,6 +1002,14 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 {
 	using namespace physics;
 	const auto& inputManager = InputManager::GetInstance();
+
+	// '[' key pressed
+	if (inputManager.IsJustReleased(VK_OEM_4))
+		mTimerView.SetTimeMultiplier(max(mTimerView.GetTimerMultiplier() - 0.1, 0.1));
+	// ']' key pressed
+	if (inputManager.IsJustReleased(VK_OEM_6))
+		mTimerView.SetTimeMultiplier(mTimerView.GetTimerMultiplier() + 0.1);
+
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
 	XMINT3 dir = { 0, 0, 0 };
 

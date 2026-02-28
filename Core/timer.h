@@ -92,6 +92,9 @@ public:
   inline void SetTimeMultiplier(double multiplier) {
     this->timeMultiplier = multiplier;
   }
+  inline double GetTimerMultiplier() const {
+      return this->timeMultiplier;
+  }
 
   template <typename T = std::chrono::nanoseconds>
     requires DurationConvertableFromNano<T>
