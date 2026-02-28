@@ -257,7 +257,7 @@ public:
 		std::unique_ptr<CharacterVirtual> controller = nullptr;
 
 	public:
-        Vec3 movementDir = Vec3::sZero();
+        Vec3 targetVelocity = Vec3::sZero();
         Vec3 desiredVelocity = Vec3::sZero();
         bool allowSliding = false;
         bool inJump = false;

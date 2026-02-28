@@ -806,11 +806,10 @@ void GameFramework::Update(float dt)
 
 	camera.UpdateViewMatrix();
 
-	physics::UpdatePhysicsSystem(dt);
-
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
 	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
+
 
 	// Has the GPU finished processing the commands of the current frame resource?
 	// If not, wait until the GPU has completed commands up to this fence point.
@@ -844,6 +843,8 @@ void GameFramework::Update(float dt)
 	UpdateMainPassCB(dt);
 	UpdateShadowPassCB(dt);
 	UpdateSsaoCB(dt);
+
+	physics::UpdatePhysicsSystem(dt);
 }
 
 void GameFramework::Draw(float dt)
@@ -1018,19 +1019,23 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 
 	for (auto& player : WORLD.GetComponents<physics::CharacterBody>()) {
 		player.inJump = inputManager.IsJustPressed(VK_SPACE);
-		player.movementDir = Vec3::sZero();
+		player.targetVelocity = Vec3::sZero();
 		if (GetAsyncKeyState(VK_DOWN) < 0) {
-			player.movementDir += Vec3{ 0.0, 0.0, -1.0 };
+			player.targetVelocity += Vec3{ 0.0, 0.0, -1.0 };
 		}
 		if (GetAsyncKeyState(VK_UP) < 0) {
-			player.movementDir += Vec3{ 0.0, 0.0, 1.0 };
+			player.targetVelocity += Vec3{ 0.0, 0.0, 1.0 };
 		}
 		if (GetAsyncKeyState(VK_LEFT) < 0) {
-			player.movementDir += Vec3{ -1.0, 0.0, 0.0 };
+			player.targetVelocity += Vec3{ -1.0, 0.0, 0.0 };
 		}
 		if (GetAsyncKeyState(VK_RIGHT) < 0) {
-			player.movementDir += Vec3{ 1.0, 0.0, 0.0 };
+			player.targetVelocity += Vec3{ 1.0, 0.0, 0.0 };
 		}
+		if (!player.targetVelocity.IsNearZero()) {
+			player.targetVelocity = player.targetVelocity.Normalized();
+		}
+		player.targetVelocity *= player.speed;
 		break;
 	}
 
@@ -1116,20 +1121,30 @@ void GameFramework::UpdateSkinnedCBs(float dt)
 			std::end(comAni.mSkinnedModelAnimationController->finalTransforms),
 			&skinnedConstants.BoneTransforms[0]);
 
-        currSkinnedCB->CopyData(0, skinnedConstants);
+		currSkinnedCB->CopyData(0, skinnedConstants);
 
-        XMFLOAT3 translationDiff = comAni.mSkinnedModelAnimationController->GetRootBoneTranslationDiff();
+		XMFLOAT3 translationDiff = comAni.mSkinnedModelAnimationController->GetRootBoneTranslationDiff();
 
-        auto pComMesh = WORLD.GetComponent<MeshComponent>(comAni.GetOwner());
-        if (pComMesh) {
-            pComMesh->Translation = Vector3::Add(pComMesh->Translation,
-                XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
-            pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslationResult.y;
-            //pComMesh->Translation = Vector3::Add(pComMesh->Translation,
-            //    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
-            pComMesh->NumFramesDirty = gNumFrameResources;
-        }
-    }
+
+		auto pComMesh = WORLD.GetComponent<MeshComponent>(comAni.GetOwner());
+		if (pComMesh) {
+			auto pComChar = WORLD.GetComponent<physics::CharacterBody>(comAni.GetOwner());
+			if (pComChar) {
+				// TODO: Handle animations marked as vertically movable
+				physics::Vec3 offset{ -pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z };
+				// We divide the offset by dt to make it a velocity
+				pComChar->targetVelocity = offset / dt;
+			}
+			else {
+				pComMesh->Translation = Vector3::Add(pComMesh->Translation,
+					XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+				pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslationResult.y;
+				//pComMesh->Translation = Vector3::Add(pComMesh->Translation,
+				//    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+				pComMesh->NumFramesDirty = gNumFrameResources;
+			}
+		}
+	}
 
 	for (auto& comEquipped : WORLD.GetComponents<EquippedComponent>()) {
 		auto hEquippedObj = comEquipped.GetOwner();
@@ -1853,30 +1868,30 @@ void GameFramework::LoadSkinnedModel()
 	std::vector<UINT> indices32bit;
 	std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
 
-    mSkinnedAnimationSets.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(mSkinnedModelFilename),
-        std::forward_as_tuple(std::make_unique<AnimationSets>()));
-    fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
-        skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
+	mSkinnedAnimationSets.emplace(
+		std::piecewise_construct,
+		std::forward_as_tuple(mSkinnedModelFilename),
+		std::forward_as_tuple(std::make_unique<AnimationSets>()));
+	fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
+		skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
 
-    // Robot.txt
-    std::unordered_map<AnimationType, std::string> moveTypeToName =
-    {
-        {AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
-        {AnimationType::WalkForward,"Skeleton|Walk_A_F"}
-    };
+	// Robot.txt
+	std::unordered_map<AnimationType, std::string> moveTypeToName =
+	{
+		{AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
+		{AnimationType::WalkForward,"Skeleton|Walk_A_F"}
+	};
 
-    auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
-    animationSet->generateAnimationSet(moveTypeToName);
-    animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
-        50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
-        * XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
-    );
-    animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
-        12, XMMatrixScaling(0.7f, 0.7f, 0.7f)* XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
-        * XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
-    );
+	auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
+	animationSet->generateAnimationSet(moveTypeToName);
+	animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
+		50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
+		* XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
+	);
+	animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
+		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
+		* XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
+	);
 
 	std::vector<std::uint16_t> indices;
 	indices.reserve(indices32bit.size());

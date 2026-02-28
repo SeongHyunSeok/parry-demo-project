@@ -293,17 +293,14 @@ namespace physics {
 	}
 
 	void CharacterBody::Update(float dt) {
-		if (!movementDir.IsNearZero()) {
-			movementDir = movementDir.Normalized();
-		}
 		bool player_controls_horizontal_velocity = controller->IsSupported();
 		if (player_controls_horizontal_velocity)
 		{
 			// Smooth the player input
-			desiredVelocity = 0.25f * movementDir * speed + 0.75f * desiredVelocity;
+			desiredVelocity = 0.25f * targetVelocity + 0.75f * desiredVelocity;
 
 			// True if the player intended to move
-			allowSliding = !movementDir.IsNearZero();
+			allowSliding = !targetVelocity.IsNearZero();
 		}
 		else
 		{
