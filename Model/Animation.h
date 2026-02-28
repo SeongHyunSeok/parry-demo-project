@@ -126,13 +126,13 @@ struct EquipmentLocation {
 enum class AnimationType : UINT {
 	Idle = 0,
 	WalkForward,
-	WalkForwordLeft45,
-	WalkForwordRight45,
+	WalkForwardLeft45,
+	WalkForwardRight45,
 	WalkLeft,
 	WalkRight,
-	WalkBackword,
-	WalkBackwordLeft45,
-	WalkBackwordRight45
+	WalkBackward,
+	WalkBackwardLeft45,
+	WalkBackwardRight45
 };
 
 struct AnimationPlayInfo {

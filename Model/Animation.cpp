@@ -279,8 +279,14 @@ AnimationController::~AnimationController()
 void AnimationController::SetAnimation(AnimationType type)
 {
 	if (animationPlayInfos[curAnimationPlayIndex].animationType != type) {
+		if (blending) {
+			if (blendingWeight < 0.5f) {
+				curAnimationPlayIndex = (curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount;
+			}
+		}
 		curAnimationPlayIndex = (curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount;
 		blending = true;
+		blendingWeight = 0.0f;
 		AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
 		playInfo.animationType = type;
 		playInfo.timePosition = 0.0f;

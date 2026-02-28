@@ -1003,41 +1003,25 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	using namespace physics;
 	const auto& inputManager = InputManager::GetInstance();
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+	XMINT3 dir = { 0, 0, 0 };
 
 	if (inputManager.IsPressed('W'))
-		player.Move(MoveType::Walk, MoveDirection::Forward);
+		dir.z += 1;
 
 	if (inputManager.IsPressed('S'))
-		camera.Walk(-10.0f * dt);
+		dir.z -= 1;
 
 	if (inputManager.IsPressed('A'))
-		camera.Strafe(-10.0f * dt);
+		dir.x -= 1;
 
 	if (inputManager.IsPressed('D'))
-		camera.Strafe(10.0f * dt);
+		dir.x += 1;
 
+	player.Move(MoveType::Walk, dir);
 
-	for (auto& player : WORLD.GetComponents<physics::CharacterBody>()) {
-		player.inJump = inputManager.IsJustPressed(VK_SPACE);
-		player.targetVelocity = Vec3::sZero();
-		if (GetAsyncKeyState(VK_DOWN) < 0) {
-			player.targetVelocity += Vec3{ 0.0, 0.0, -1.0 };
-		}
-		if (GetAsyncKeyState(VK_UP) < 0) {
-			player.targetVelocity += Vec3{ 0.0, 0.0, 1.0 };
-		}
-		if (GetAsyncKeyState(VK_LEFT) < 0) {
-			player.targetVelocity += Vec3{ -1.0, 0.0, 0.0 };
-		}
-		if (GetAsyncKeyState(VK_RIGHT) < 0) {
-			player.targetVelocity += Vec3{ 1.0, 0.0, 0.0 };
-		}
-		if (!player.targetVelocity.IsNearZero()) {
-			player.targetVelocity = player.targetVelocity.Normalized();
-		}
-		player.targetVelocity *= player.speed;
-		break;
-	}
+	auto playerController = WORLD.GetComponent<physics::CharacterBody>(player.GetOwner());
+	assert(playerController);
+	playerController->inJump = inputManager.IsJustPressed(VK_SPACE);
 
 	player.UpdateInput();
 }
@@ -1131,13 +1115,14 @@ void GameFramework::UpdateSkinnedCBs(float dt)
 			auto pComChar = WORLD.GetComponent<physics::CharacterBody>(comAni.GetOwner());
 			if (pComChar) {
 				// TODO: Handle animations marked as vertically movable
-				physics::Vec3 offset{ -pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z };
+				physics::Vec3 offset{ pComMesh->Scale.x * translationDiff.x, 0, pComMesh->Scale.z * translationDiff.z };
 				// We divide the offset by dt to make it a velocity
 				pComChar->targetVelocity = offset / dt;
 			}
 			else {
+				// TO DO!!
 				pComMesh->Translation = Vector3::Add(pComMesh->Translation,
-					XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+					XMFLOAT3(pComMesh->Scale.x * translationDiff.x, 0, pComMesh->Scale.z * translationDiff.z));
 				pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslationResult.y;
 				//pComMesh->Translation = Vector3::Add(pComMesh->Translation,
 				//    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
@@ -1864,105 +1849,112 @@ void GameFramework::BuildShapeGeometry()
 
 void GameFramework::LoadSkinnedModel()
 {
-	std::vector<SkinnedVertex> vertices;
-	std::vector<UINT> indices32bit;
-	std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
+    std::vector<SkinnedVertex> vertices;
+    std::vector<UINT> indices32bit;
+    std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
 
-	mSkinnedAnimationSets.emplace(
-		std::piecewise_construct,
-		std::forward_as_tuple(mSkinnedModelFilename),
-		std::forward_as_tuple(std::make_unique<AnimationSets>()));
-	fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
-		skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
+    mSkinnedAnimationSets.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(mSkinnedModelFilename),
+        std::forward_as_tuple(std::make_unique<AnimationSets>()));
+    fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
+        skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
 
-	// Robot.txt
-	std::unordered_map<AnimationType, std::string> moveTypeToName =
-	{
-		{AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
-		{AnimationType::WalkForward,"Skeleton|Walk_A_F"}
-	};
+    // Robot.txt
+    std::unordered_map<AnimationType, std::string> moveTypeToName =
+    {
+        {AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
+        {AnimationType::WalkForward,"Skeleton|Walk_A_F"},
+        {AnimationType::WalkForwardRight45,"Skeleton|Walk_A_F_R45"},
+        {AnimationType::WalkForwardLeft45,"Skeleton|Walk_A_F_L45"},
+        {AnimationType::WalkBackwardRight45,"Skeleton|Walk_A_B_R45"},
+        {AnimationType::WalkBackwardLeft45,"Skeleton|Walk_A_B_L45"},
+        {AnimationType::WalkRight,"Skeleton|Walk_A_F_R90_A"},
+        {AnimationType::WalkLeft,"Skeleton|Walk_A_F_L90_A"},
+        {AnimationType::WalkBackward,"Skeleton|Walk_A_B"}
+    };
 
-	auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
-	animationSet->generateAnimationSet(moveTypeToName);
-	animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
-		50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
-		* XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
-	);
-	animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
-		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
-		* XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
-	);
+    auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
+    animationSet->generateAnimationSet(moveTypeToName);
+    animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
+        50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
+        * XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
+    );
+    animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
+        12, XMMatrixScaling(0.7f, 0.7f, 0.7f)* XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
+        * XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
+    );
 
-	std::vector<std::uint16_t> indices;
-	indices.reserve(indices32bit.size());
-	for (UINT index : indices32bit) {
-		indices.push_back(index);
-	}
+    std::vector<std::uint16_t> indices;
+    indices.reserve(indices32bit.size());
+    for (UINT index : indices32bit) {
+        indices.push_back(index);
+    }
 
-	const UINT vbByteSize = (UINT)vertices.size() * sizeof(SkinnedVertex);
-	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+    const UINT vbByteSize = (UINT)vertices.size() * sizeof(SkinnedVertex);
+    const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-	auto geo = std::make_unique<MeshGeometry>();
-	geo->Name = mSkinnedModelFilename;
+    auto geo = std::make_unique<MeshGeometry>();
+    geo->Name = mSkinnedModelFilename;
 
-	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+    ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+    CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
-	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+    ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+    CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
-	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+    geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+        mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
 
-	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+    geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+        mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
 
-	geo->VertexByteStride = sizeof(SkinnedVertex);
-	geo->VertexBufferByteSize = vbByteSize;
-	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-	geo->IndexBufferByteSize = ibByteSize;
+    geo->VertexByteStride = sizeof(SkinnedVertex);
+    geo->VertexBufferByteSize = vbByteSize;
+    geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+    geo->IndexBufferByteSize = ibByteSize;
 
-	for (UINT i = 0; i < (UINT)skinnedSubsets.size(); ++i)
-	{
-		SubmeshGeometry submesh;
-		std::string name(move(skinnedSubsets[i].name));
+    for (UINT i = 0; i < (UINT)skinnedSubsets.size(); ++i)
+    {
+        SubmeshGeometry submesh;
+        std::string name(move(skinnedSubsets[i].name));
 
-		submesh.IndexCount = (UINT)skinnedSubsets[i].indexCount;
-		submesh.StartIndexLocation = skinnedSubsets[i].startIndexLocation;
-		submesh.BaseVertexLocation = skinnedSubsets[i].baseVertexLocation;
+        submesh.IndexCount = (UINT)skinnedSubsets[i].indexCount;
+        submesh.StartIndexLocation = skinnedSubsets[i].startIndexLocation;
+        submesh.BaseVertexLocation = skinnedSubsets[i].baseVertexLocation;
 
-		geo->DrawArgs[name] = submesh;
-	}
+        geo->DrawArgs[name] = submesh;
+    }
 
-	mGeometries[geo->Name] = std::move(geo);
+    mGeometries[geo->Name] = std::move(geo);
 
-	mSkinnedMats.resize(skinnedSubsets.size());
-	mSkinnedMats[0].Name = std::string("soldier_head");
-	mSkinnedMats[0].DiffuseAlbedo = { 0.7f, 0.7f, 0.7f, 1.0f };
-	mSkinnedMats[0].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-	mSkinnedMats[0].Roughness = 0.5;
-	mSkinnedMats[0].AlphaClip = false;
-	mSkinnedMats[0].MaterialTypeName = std::string("Skinned");
-	mSkinnedMats[0].DiffuseMapName = std::string("checkboard.dds");
-	mSkinnedMats[0].NormalMapName = std::string("upBody_norm.dds");
+    mSkinnedMats.resize(skinnedSubsets.size());
+    mSkinnedMats[0].Name = std::string("soldier_head");
+    mSkinnedMats[0].DiffuseAlbedo = { 0.7f, 0.7f, 0.7f, 1.0f };
+    mSkinnedMats[0].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+    mSkinnedMats[0].Roughness = 0.5;
+    mSkinnedMats[0].AlphaClip = false;
+    mSkinnedMats[0].MaterialTypeName = std::string("Skinned");
+    mSkinnedMats[0].DiffuseMapName = std::string("checkboard.dds");
+    mSkinnedMats[0].NormalMapName = std::string("upBody_norm.dds");
 
-	mSkinnedMats[1].Name = std::string("soldier_upBody");
-	mSkinnedMats[1].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
-	mSkinnedMats[1].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-	mSkinnedMats[1].Roughness = 0.4;
-	mSkinnedMats[1].AlphaClip = false;
-	mSkinnedMats[1].MaterialTypeName = std::string("Skinned");
-	mSkinnedMats[1].DiffuseMapName = std::string("checkboard.dds");
-	mSkinnedMats[1].NormalMapName = std::string("upBody_norm.dds");
+    mSkinnedMats[1].Name = std::string("soldier_upBody");
+    mSkinnedMats[1].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+    mSkinnedMats[1].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+    mSkinnedMats[1].Roughness = 0.4;
+    mSkinnedMats[1].AlphaClip = false;
+    mSkinnedMats[1].MaterialTypeName = std::string("Skinned");
+    mSkinnedMats[1].DiffuseMapName = std::string("checkboard.dds");
+    mSkinnedMats[1].NormalMapName = std::string("upBody_norm.dds");
 
-	mSkinnedMats[2].Name = std::string("soldier_upBody2");
-	mSkinnedMats[2].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
-	mSkinnedMats[2].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-	mSkinnedMats[2].Roughness = 0.3;
-	mSkinnedMats[2].AlphaClip = false;
-	mSkinnedMats[2].MaterialTypeName = std::string("Skinned");
-	mSkinnedMats[2].DiffuseMapName = std::string("checkboard.dds");
-	mSkinnedMats[2].NormalMapName = std::string("upBody_norm.dds");
+    mSkinnedMats[2].Name = std::string("soldier_upBody2");
+    mSkinnedMats[2].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+    mSkinnedMats[2].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+    mSkinnedMats[2].Roughness = 0.3;
+    mSkinnedMats[2].AlphaClip = false;
+    mSkinnedMats[2].MaterialTypeName = std::string("Skinned");
+    mSkinnedMats[2].DiffuseMapName = std::string("checkboard.dds");
+    mSkinnedMats[2].NormalMapName = std::string("upBody_norm.dds");
 }
 
 void GameFramework::BuildFbxModelGeometry()
@@ -2493,7 +2485,7 @@ void GameFramework::BuildRenderItems()
 	}
 
 	XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
-	XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
+	XMFLOAT3 modelRot = XMFLOAT3(0.0f, 0.0f, 0.0f); //MathHelper::Pi
 	XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 2.8f, -5.0f);
 
 	MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
@@ -2506,7 +2498,7 @@ void GameFramework::BuildRenderItems()
 	comPlayerAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
 	comPlayerAnimation.mSkinnedModelAnimationController =
 		std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
-	//comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(clipName);
+	    //comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
 	EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));
