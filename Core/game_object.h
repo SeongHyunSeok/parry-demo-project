@@ -61,8 +61,10 @@ public:
 	}
 
 	bool AddChild(GameWorld& world, Handle<GameObject> child);
-	const std::set<Handle<GameObject>>& GetChildren() const { return children; }
+	inline const std::set<Handle<GameObject>>& GetChildren() const { return children; }
 	bool RemoveChild(GameWorld& world, Handle<GameObject> child);
+
+	inline std::optional<Handle<GameObject>> GetParent() const { return parent; }
 
 	void HandleEvent(Event& event);
 };

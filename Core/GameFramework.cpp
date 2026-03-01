@@ -169,6 +169,7 @@ bool GameFramework::Initialize()
 	Camera comCamera{ hCameraObj };
 	comCamera.SetPosition(0.0f, 2.0f, -15.0f);
 	WORLD.AttachComponent(hCameraObj, std::move(comCamera));
+	WORLD.AttachComponent(hCameraObj, AttachedCamera{ hCameraObj, physics::Vec3{0.f, 5.f, -13.f}, 0.1f });
 
 	// Do the initial resize code.
 	OnResize();
@@ -819,7 +820,7 @@ void GameFramework::OnResize()
 	///////////
 
 	auto& camera = GetMainCamera();
-	camera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
+	camera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 0.01f, 1000.0f);
 
 	if (mSsao != nullptr)
 	{
@@ -853,13 +854,6 @@ void GameFramework::CreateRtvAndDsvDescriptorHeaps()
 
 void GameFramework::Update(float dt)
 {
-	auto& camera = GetMainCamera();
-
-	HandleKeyboardInput(camera, dt);
-	HandleMouseInput(camera, dt);
-
-	camera.UpdateViewMatrix();
-
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
 	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
@@ -874,6 +868,12 @@ void GameFramework::Update(float dt)
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
+
+	auto& camera = GetMainCamera();
+
+	HandleKeyboardInput(camera, dt);
+	HandleMouseInput(camera, dt);
+
 
 	//
 	// Animate the lights (and hence shadows).
@@ -890,15 +890,18 @@ void GameFramework::Update(float dt)
 	}
 
 	AnimateMaterials(dt);
-	UpdateObjectCBs(dt);
 	UpdateSkinnedCBs(dt);
+
+	physics::UpdatePhysicsSystem(dt);
+	physics::UpdateAttachedCamera();
+	camera.UpdateViewMatrix();
+
+	UpdateObjectCBs(dt);
 	UpdateMaterialBuffer(dt);
 	UpdateShadowTransform(dt);
 	UpdateMainPassCB(dt);
 	UpdateShadowPassCB(dt);
 	UpdateSsaoCB(dt);
-
-	physics::UpdatePhysicsSystem(dt);
 }
 
 void GameFramework::Draw(float dt)
@@ -2587,6 +2590,8 @@ void GameFramework::BuildRenderItems()
 	UINT equippedCBIndexCounter = 0;
 
 	auto hPlayerObj = WORLD.AddObject();
+	auto pPlayerObj = WORLD.GetGameObject(hPlayerObj);
+	pPlayerObj->AddChild(WORLD, GetMainCamera().GetOwner());
 	WORLD.AttachComponent(hPlayerObj, PlayerComponent(hPlayerObj));
 
 	MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();

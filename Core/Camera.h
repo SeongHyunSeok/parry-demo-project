@@ -13,6 +13,7 @@
 
 #include "d3dUtil.h"
 #include "component.h"
+#include "physics.h"
 
 class Camera : public Component
 {
@@ -98,6 +99,20 @@ private:
 	// Cache View/Proj matrices.
 	DirectX::XMFLOAT4X4 mView = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 mProj = MathHelper::Identity4x4();
+};
+
+class AttachedCamera : public Component {
+private:
+	physics::ShapeRefC shape;
+	float radius;	// Camera shape is a sphere
+
+public:
+	AttachedCamera(Handle<GameObject> owner, const physics::Vec3& offset, float radius);
+
+	physics::Vec3 offset;
+
+	inline physics::ShapeRefC GetShape() const { return shape; }
+	inline float GetRadius() const { return radius; }
 };
 
 #endif // CAMERA_H
