@@ -24,6 +24,7 @@
 #include "Jolt/Physics/EActivation.h"
 #include "component.h"
 #include "event.h"
+#include <DirectXMath.h>
 
 namespace physics {
 using namespace JPH;
@@ -284,5 +285,7 @@ public:
 };
 
 void UpdatePhysicsSystem(float deltaTime);
+
+Mat44 FromDirectXMat(const DirectX::XMMATRIX& mat);
 
 } // namespace physics

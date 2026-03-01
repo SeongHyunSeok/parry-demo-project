@@ -292,6 +292,12 @@ namespace physics {
 		}
 	}
 
+	Mat44 FromDirectXMat(const XMMATRIX& mat)
+	{
+		auto columnMat = XMMatrixTranspose(mat);
+		return Mat44::sLoadFloat4x4Aligned(reinterpret_cast<Float4*>(&columnMat));
+	}
+
 	void CharacterBody::Update(float dt) {
 		bool player_controls_horizontal_velocity = controller->IsSupported();
 		if (player_controls_horizontal_velocity)
