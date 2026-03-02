@@ -159,6 +159,7 @@
     <ClInclude Include="Core\Components\Mesh.h" />
     <ClInclude Include="Core\Components\Player.h" />
     <ClInclude Include="Core\Components\Sky.h" />
+    <ClInclude Include="Core\Components\StateMachine.h" />
     <ClInclude Include="Core\d3dUtil.h" />
     <ClInclude Include="Core\d3dx12.h" />
     <ClInclude Include="Core\DDSTextureLoader.h" />

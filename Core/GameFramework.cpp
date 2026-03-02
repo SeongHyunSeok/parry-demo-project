@@ -799,20 +799,11 @@ void GameFramework::CreateRtvAndDsvDescriptorHeaps()
 
 void GameFramework::Update(float dt)
 {
-	auto& camera = GetMainCamera();
-
-	HandleKeyboardInput(camera, dt);
-	HandleMouseInput(camera, dt);
-
-	camera.UpdateViewMatrix();
-
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
 	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
-
-
 	// Has the GPU finished processing the commands of the current frame resource?
-	// If not, wait until the GPU has completed commands up to this fence point.
+// If not, wait until the GPU has completed commands up to this fence point.
 	if (mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
 	{
 		HANDLE eventHandle = CreateEventEx(nullptr, nullptr, false, EVENT_ALL_ACCESS);
@@ -820,6 +811,14 @@ void GameFramework::Update(float dt)
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
+
+
+	auto& camera = GetMainCamera();
+
+	HandleKeyboardInput(camera, dt);
+	HandleMouseInput(camera, dt);
+
+	camera.UpdateViewMatrix();
 
 	//
 	// Animate the lights (and hence shadows).
@@ -1107,23 +1106,33 @@ void GameFramework::UpdateSkinnedCBs(float dt)
 
 		currSkinnedCB->CopyData(0, skinnedConstants);
 
-		XMFLOAT3 translationDiff = comAni.mSkinnedModelAnimationController->GetRootBoneTranslationDiff();
-
+		XMFLOAT3 rawTranslationDiff = comAni.mSkinnedModelAnimationController->GetRootBoneTranslationDiff();
 
 		auto pComMesh = WORLD.GetComponent<MeshComponent>(comAni.GetOwner());
 		if (pComMesh) {
+			XMMATRIX transform = pComMesh->getScaleRotTransformOnlyMatrix();
+			XMFLOAT3 translationDiff;
+			XMStoreFloat3(
+				&translationDiff,
+				XMVector3Transform(XMLoadFloat3(&rawTranslationDiff), transform)
+			);
+
 			auto pComChar = WORLD.GetComponent<physics::CharacterBody>(comAni.GetOwner());
 			if (pComChar) {
 				// TODO: Handle animations marked as vertically movable
-				physics::Vec3 offset{ -pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z };
+				physics::Vec3 offset{ translationDiff.x, 0, translationDiff.z };
 				// We divide the offset by dt to make it a velocity
 				pComChar->targetVelocity = offset / dt;
 			}
 			else {
-				// TO DO!!
-				pComMesh->Translation = Vector3::Add(pComMesh->Translation,
-					XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
-				pComMesh->Translation.y = pComMesh->Scale.y * comAni.mSkinnedModelAnimationController->rootBoneTranslationResult.y;
+				//XMFLOAT3 transformedPosition;
+				//XMStoreFloat3(
+				//	&transformedPosition,
+				//	XMVector3Transform(XMLoadFloat3(&comAni.mSkinnedModelAnimationController->rootBoneTranslationResult), 
+				//		transform)
+				//);
+				pComMesh->Translation = Vector3::Add(pComMesh->Translation, translationDiff);
+				//pComMesh->Translation.y = transformedPosition.y;
 				//pComMesh->Translation = Vector3::Add(pComMesh->Translation,
 				//    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
 				pComMesh->NumFramesDirty = gNumFrameResources;
@@ -1884,13 +1893,13 @@ void GameFramework::LoadSkinnedModel()
 		{AnimationType::RollBackward,"Skeleton|Low_Roll_B"},
 		// Hit
 		{ AnimationType::HitBackType1,"Skeleton|Hit_B_1" },
-		{ AnimationType::HitBackType1,"Skeleton|Hit_B_2" },
-		{ AnimationType::HitBackType1,"Skeleton|Hit_B_3" },
-		{ AnimationType::HitBackType1,"Skeleton|Hit_F_1" },
-		{ AnimationType::HitBackType1,"Skeleton|Hit_F_2" },
-		{ AnimationType::HitBackType1,"Skeleton|Hit_F_3" },
-		{ AnimationType::HitBackType1,"Skeleton|Hit_F_Down" },
-		{ AnimationType::HitBackType1,"Skeleton|Hit_F_Up" },
+		{ AnimationType::HitBackType2,"Skeleton|Hit_B_2" },
+		{ AnimationType::HitBackType3,"Skeleton|Hit_B_3" },
+		{ AnimationType::HitFrontType1,"Skeleton|Hit_F_1" },
+		{ AnimationType::HitFrontType2,"Skeleton|Hit_F_2" },
+		{ AnimationType::HitFrontType3,"Skeleton|Hit_F_3" },
+		{ AnimationType::HitFrontDown,"Skeleton|Hit_F_Down" },
+		{ AnimationType::HitFrontUp,"Skeleton|Hit_F_Up" },
 		// OneHandBaseAttack
 		{ AnimationType::OneHandBaseAttackTypeC_1,"Skeleton|OneHand_Base_Attack_C_1" },
 		{ AnimationType::OneHandBaseAttackTypeC_2,"Skeleton|OneHand_Base_Attack_C_2" },

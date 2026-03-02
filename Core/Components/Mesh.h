@@ -69,6 +69,13 @@ struct MeshComponent : public Component
         XMStoreFloat4x4(&World, modelScale * modelRot * modelOffset);
     }
 
+    XMMATRIX getScaleRotTransformOnlyMatrix() {
+        XMMATRIX modelScale = XMMatrixScaling(Scale.x, Scale.y, Scale.z);
+        XMMATRIX modelRot = XMMatrixRotationX(Rotation.x) * XMMatrixRotationY(Rotation.y) * XMMatrixRotationZ(Rotation.z);
+
+        return modelScale * modelRot;
+    }
+
     // World matrix of the shape that describes the object's local space
     // relative to the world space, which defines the position, orientation,
     // and scale of the object in the world.

@@ -126,6 +126,30 @@ void AnimationSet::Interpolate(
 			rawRootBoneTranslation = translationResult;
 		}
 		boneToParents[boneFrameIndex].scale = Vector3::Add(boneToParents[boneFrameIndex].scale, scaleResult, totalWeight);
+
+		if (totalWeight < 1.0f) {
+			XMVECTOR previousRotation = XMLoadFloat3(&boneToParents[boneFrameIndex].rotation) / (1 - totalWeight);
+			XMVECTOR rotationResultVec = XMLoadFloat3(&rotationResult);
+			XMVECTOR rotationSigns = {
+				(0.0f <= rotationResult.x) - (rotationResult.x < 0.0f),
+				(0.0f <= rotationResult.y) - (rotationResult.y < 0.0f),
+				(0.0f <= rotationResult.z) - (rotationResult.z < 0.0f),
+			};
+
+			XMFLOAT3 rotationDiffs;
+			XMStoreFloat3(&rotationDiffs, previousRotation - rotationResultVec);
+			XMVECTOR diffChecks = {
+				((rotationDiffs.x < -MathHelper::Pi) || (rotationDiffs.x > MathHelper::Pi)),
+				((rotationDiffs.y < -MathHelper::Pi) || (rotationDiffs.y > MathHelper::Pi)),
+				((rotationDiffs.z < -MathHelper::Pi) || (rotationDiffs.z > MathHelper::Pi)),
+			};
+
+			XMStoreFloat3(
+				&rotationResult,
+				rotationResultVec + ((-rotationSigns) * diffChecks * 2 * MathHelper::Pi)
+			);
+		}
+
 		boneToParents[boneFrameIndex].rotation = Vector3::Add(boneToParents[boneFrameIndex].rotation, rotationResult, totalWeight);
 		boneToParents[boneFrameIndex].translation = Vector3::Add(boneToParents[boneFrameIndex].translation, translationResult, totalWeight);
 
