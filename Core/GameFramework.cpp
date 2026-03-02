@@ -7,7 +7,8 @@
 #include <WindowsX.h>
 
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
-#include <Jolt/Physics/Collision/Shape/PlaneShape.h>
+#include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include "Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h"
 #include "Jolt/Physics/Character/CharacterVirtual.h"
 
@@ -2495,8 +2496,14 @@ void GameFramework::BuildRenderItems()
 	};
 	WORLD.AttachComponent(hQuadObj, std::move(comQuadMesh));
 	WORLD.AttachComponent(hQuadObj, NonAnimatedComponent(hQuadObj));
-	auto pShape = new PlaneShape{ Plane::sFromPointAndNormal(Vec3::sZero(), Vec3::sAxisY()) };
-	StaticBody comQuadBody{ hQuadObj, bodyInterface, pShape, Vec3::sZero(), Quat::sIdentity() };
+	StaticCompoundShapeSettings compoundShapeSettings;
+	ShapeRefC pPlaneShape{ new BoxShape{ Vec3{50.f, 0.1f, 50.f} } };
+	compoundShapeSettings.AddShape(Vec3(0.f, -0.1f, 0.f), Quat::sIdentity(), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(20.f, 0.f, 0.f), Quat::sRotation(Vec3::sAxisZ(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(-20.f, 0.f, 0.f), Quat::sRotation(-Vec3::sAxisZ(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(0.f, 0.f, 20.f), Quat::sRotation(-Vec3::sAxisX(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(0.f, 0.f, -20.f), Quat::sRotation(Vec3::sAxisX(), MathHelper::Pi / 2.f), pPlaneShape);
+	StaticBody comQuadBody{ hQuadObj, bodyInterface, compoundShapeSettings.Create().Get(), Vec3::sZero(), Quat::sIdentity() };
 	WORLD.AttachComponent(hQuadObj, std::move(comQuadBody));
 
 	auto hBoxObj = WORLD.AddObject();

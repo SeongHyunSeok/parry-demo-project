@@ -309,34 +309,34 @@ namespace physics {
 
 			const auto& xmParentPos = pParentMesh->Translation;
 			Vec3 parentPos{ xmParentPos.x, xmParentPos.y, xmParentPos.z };
+			Vec3 startPos{ parentPos };
+			startPos.SetY(startPos.GetY() + pAttachedCam->offset.GetY());
 			const auto& xmParentRot = pParentMesh->Rotation;
 			const auto parentRot = Quat::sEulerAngles(Vec3{ xmParentRot.x, xmParentRot.y, xmParentRot.z });
 			Vec3 nextCamPos = parentPos + (parentRot * pAttachedCam->offset);
 
-			auto shapeCast = RShapeCast::sFromWorldTransform(pAttachedCam->GetShape().GetPtr(), Vec3::sOne(), Mat44::sTranslation(parentPos), pAttachedCam->offset.Normalized());
+			auto shapeCast = RShapeCast::sFromWorldTransform(pAttachedCam->GetShape().GetPtr(), Vec3::sOne(), Mat44::sTranslation(startPos), nextCamPos - startPos);
 
+			ShapeCastSettings shapeCastSettings;
+			shapeCastSettings.SetBackFaceMode(EBackFaceMode::CollideWithBackFaces);
 			ClosestHitCollisionCollector<CastShapeCollector> collector;
 			PHYSICS_SYSTEM.GetNarrowPhaseQuery().CastShape(
 				shapeCast,
-				ShapeCastSettings{},
-				parentPos,
+				shapeCastSettings,
+				startPos,
 				collector,
 				SpecifiedBroadPhaseLayerFilter{ BroadPhaseLayers::NON_MOVING }
 			);
 
 			if (collector.HadHit()) {
 				const auto& hit = collector.mHit;
-				if (hit.mPenetrationDepth > 0.f) {
-					auto resolvedCenter = hit.mContactPointOn1 - hit.mPenetrationAxis.Normalized() * (hit.mPenetrationDepth + pAttachedCam->GetRadius());
-					if (resolvedCenter.LengthSq() < pAttachedCam->offset.LengthSq()) {
-						nextCamPos = parentPos + resolvedCenter;
-					}
+				auto resolvedCenter = hit.mContactPointOn1 - hit.mPenetrationAxis.Normalized() * (hit.mPenetrationDepth + pAttachedCam->GetRadius());
+				if (resolvedCenter.LengthSq() < pAttachedCam->offset.LengthSq()) {
+					nextCamPos = startPos + resolvedCenter;
 				}
 			}
 
-			auto lookTarget = parentPos;
-			lookTarget.SetY(nextCamPos.GetY());
-			cam.LookAt(ToDirectXF3(nextCamPos), ToDirectXF3(lookTarget), XMFLOAT3{ 0.f, 1.f, 0.f });
+			cam.LookAt(ToDirectXF3(nextCamPos), ToDirectXF3(startPos), XMFLOAT3{ 0.f, 1.f, 0.f });
 		}
 	}
 
