@@ -290,6 +290,8 @@ public:
 	void AdvanceTime(float elapsedTime);
 
 	DirectX::XMFLOAT3 GetRootBoneTranslationDiff();
+
+	bool IsAnimationEnd();
 private:
 	void UpdateTimePosition(float elapsedTime);
 	void UpdateTimePosition(float elapsedTime, UINT playInfoIndex);

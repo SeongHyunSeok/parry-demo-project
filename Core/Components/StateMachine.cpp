@@ -65,6 +65,15 @@ void StateMachineComponent::SetOwnerAnimation(AnimationType animationType)
 	}
 }
 
+bool StateMachineComponent::CheckAnimationEnd()
+{
+	auto hOwner = GetOwner();
+	auto pComAni = WORLD.GetComponent<AnimationComponent>(hOwner);
+	if (pComAni) {
+		return pComAni->mSkinnedModelAnimationController->IsAnimationEnd();
+	}
+}
+
 AnimationType PlayerIdleState::GetAnimationType(StateMachineComponent* pStateMachine) {
 	if (shield) {
 		auto hOwner = pStateMachine->GetOwner();
@@ -248,6 +257,67 @@ AnimationType PlayerWalkState::GetAnimationType(StateMachineComponent* pStateMac
 	}
 	else if (direction.z == -1) {
 		animationType = AnimationType::WalkBackward;
+	}
+	return animationType;
+}
+
+void PlayerRollState::Enter(StateMachineComponent* pStateMachine, StateProperty property)
+{
+	direction = property.dir;
+
+	pStateMachine->SetOwnerAnimation(GetAnimationType());
+}
+
+void PlayerRollState::Leave(StateMachineComponent* pStateMachine)
+{
+	direction = { 0, 0, 1 };
+}
+
+void PlayerRollState::Update(StateMachineComponent* pStateMachine)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		pStateMachine->ChangeState(StateType::Idle, StateProperty());
+	}
+}
+
+void PlayerRollState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		pStateMachine->ChangeStateByInput(playerInput);
+	}
+}
+
+void PlayerRollState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent event)
+{
+	// TO DO : Implement to ignore damages in specific period
+}
+
+AnimationType PlayerRollState::GetAnimationType()
+{
+	AnimationType animationType = AnimationType::RollForward;
+	if (direction.x == 1 && direction.z == 1) {
+		animationType = AnimationType::RollForwardRight45;
+	}
+	else if (direction.x == -1 && direction.z == 1) {
+		animationType = AnimationType::RollForwardLeft45;
+	}
+	else if (direction.x == 1 && direction.z == -1) {
+		animationType = AnimationType::RollBackwardRight45;
+	}
+	else if (direction.x == -1 && direction.z == -1) {
+		animationType = AnimationType::RollBackwardLeft45;
+	}
+	else if (direction.x == 1) {
+		animationType = AnimationType::RollRight;
+	}
+	else if (direction.x == -1) {
+		animationType = AnimationType::RollLeft;
+	}
+	else if (direction.z == 1) {
+		animationType = AnimationType::RollForward;
+	}
+	else if (direction.z == -1) {
+		animationType = AnimationType::RollBackward;
 	}
 	return animationType;
 }

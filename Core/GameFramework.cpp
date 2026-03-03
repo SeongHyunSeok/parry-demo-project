@@ -1028,7 +1028,12 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	}
 
 	if (dir.x != 0 || dir.z != 0) {
-		playerInput.type = InputType::Walk;
+		if (inputManager.IsPressed(VK_SPACE)) {
+			playerInput.type = InputType::Roll;
+		}
+		else {
+			playerInput.type = InputType::Walk;
+		}
 	}
 
 	player.Input(playerInput);
@@ -2594,6 +2599,7 @@ void GameFramework::BuildRenderItems()
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> playerStates;
 	playerStates[StateType::Idle] = std::make_unique<PlayerIdleState>();
 	playerStates[StateType::Walk] = std::make_unique<PlayerWalkState>();
+	playerStates[StateType::Roll] = std::make_unique< PlayerRollState>();
 	StateMachineComponent comPlayerSM{ hPlayerObj, move(playerStates), StateType::Idle };
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerSM));
 

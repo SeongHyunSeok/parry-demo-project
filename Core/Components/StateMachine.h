@@ -41,6 +41,7 @@ public:
 	void ChangeStateByInput(const PlayerInupt& playerInput);
 	void ChangeState(StateType targetStateType, StateProperty property);
 	void SetOwnerAnimation(AnimationType animationType);
+	bool CheckAnimationEnd();
 private:
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> states;
 	CharacterState* currentState = nullptr;
@@ -95,3 +96,17 @@ private:
 	AnimationType GetAnimationType(StateMachineComponent* pStateMachine);
 };
 
+class PlayerRollState : public CharacterState
+{
+public:
+	PlayerRollState() {}
+	void Enter(StateMachineComponent* pStateMachine, StateProperty property) override;
+	void Leave(StateMachineComponent* pStateMachine) override;
+	void Update(StateMachineComponent* pStateMachine) override;
+	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
+	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent event) override;
+private:
+	XMINT3 direction = { 0, 0, 1 };
+
+	AnimationType GetAnimationType();
+};

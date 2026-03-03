@@ -445,6 +445,14 @@ DirectX::XMFLOAT3 AnimationController::GetRootBoneTranslationDiff() {
 	);
 }
 
+bool AnimationController::IsAnimationEnd()
+{
+	AnimationPlayInfo& info = animationPlayInfos[curAnimationPlayIndex];
+	if (animationTracks[info.animationType].endPosition <= info.timePosition)
+		return true;
+	return false;
+}
+
 DirectX::XMFLOAT3 AnimationController::CalcRawTranslationDiff(UINT playInfoIndex) {
 	AnimationPlayInfo& playInfo = animationPlayInfos[playInfoIndex];
 	if (playInfo.startingAnimation) {
