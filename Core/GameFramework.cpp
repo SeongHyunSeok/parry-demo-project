@@ -834,6 +834,10 @@ void GameFramework::Update(float dt)
 		XMStoreFloat3(&mRotatedLightDirections[i], lightDir);
 	}
 
+	// Update Objects
+	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+	player.Update(dt);
+
 	AnimateMaterials(dt);
 	UpdateObjectCBs(dt);
 	UpdateSkinnedCBs(dt);
@@ -1016,13 +1020,22 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	if (inputManager.IsPressed('D'))
 		dir.x -= 1;
 
-	player.Move(MoveType::Walk, dir);
+	PlayerInupt playerInput;
+	playerInput.dir = dir;
+
+	if (inputManager.IsPressed(VK_SHIFT)) {
+		playerInput.shield = true;
+	}
+
+	if (dir.x != 0 || dir.z != 0) {
+		playerInput.type = InputType::Walk;
+	}
+
+	player.Input(playerInput);
 
 	auto playerController = WORLD.GetComponent<physics::CharacterBody>(player.GetOwner());
 	assert(playerController);
 	playerController->inJump = inputManager.IsJustPressed(VK_SPACE);
-
-	player.UpdateInput();
 }
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {
@@ -1921,14 +1934,14 @@ void GameFramework::LoadSkinnedModel()
 		{ AnimationType::OneHandBaseShieldParryType1,"Skeleton|OneHand_Base_Shield_Block_Parry_2" },
 		{ AnimationType::OneHandBaseShieldParryType2,"Skeleton|OneHand_Base_Shield_Block_Parry_3" },
 		// OneHandBaseShieldWalk
-		{AnimationType::OnewHandBaseShieldWalkForward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F"},
-		{AnimationType::OnewHandBaseShieldWalkForwardRight45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_R45"},
-		{AnimationType::OnewHandBaseShieldWalkForwardLeft45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_L45"},
-		{AnimationType::OnewHandBaseShieldWalkBackwardRight45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B_R45"},
-		{AnimationType::OnewHandBaseShieldWalkBackwardLeft45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B_L45"},
-		{AnimationType::OnewHandBaseShieldWalkRight,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_R90_A"},
-		{AnimationType::OnewHandBaseShieldWalkLeft,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_L90_A"},
-		{AnimationType::OnewHandBaseShieldWalkBackward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B"}
+		{AnimationType::OneHandBaseShieldWalkForward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F"},
+		{AnimationType::OneHandBaseShieldWalkForwardRight45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_R45"},
+		{AnimationType::OneHandBaseShieldWalkForwardLeft45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_L45"},
+		{AnimationType::OneHandBaseShieldWalkBackwardRight45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B_R45"},
+		{AnimationType::OneHandBaseShieldWalkBackwardLeft45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B_L45"},
+		{AnimationType::OneHandBaseShieldWalkRight,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_R90_A"},
+		{AnimationType::OneHandBaseShieldWalkLeft,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_L90_A"},
+		{AnimationType::OneHandBaseShieldWalkBackward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B"}
 	};
 
     auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
@@ -2508,10 +2521,10 @@ void GameFramework::BuildRenderItems()
 		XMMatrixIdentity(),
 		{ mGeometries["equipmentGeo"].get() }, { "OneHandSword0" }, { mMaterials["equipment"].get() }
 	);
-	auto comEquipment = EquipmentComponent(hPlayerOneHandSwordObj);
-	comEquipment.equipmentType = EquipmentTypes::OneHandSword;
+	auto comOneHandSwordEquipment = EquipmentComponent(hPlayerOneHandSwordObj);
+	comOneHandSwordEquipment.equipmentType = EquipmentTypes::OneHandSword;
 	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comPlayerOneHandSwordMesh));
-	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comEquipment));
+	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comOneHandSwordEquipment));
 
 	auto hPlayerShieldObj = WORLD.AddObject();
 	MeshComponent comPlayerShieldMesh(hPlayerShieldObj, objCBIndexCounter++,
@@ -2557,6 +2570,8 @@ void GameFramework::BuildRenderItems()
 		std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
 	    //comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
 	EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
+	comPlayerEquipmentOwner.equipments[(UINT)EquipmentTypes::OneHandSword] = hPlayerOneHandSwordObj;
+	comPlayerEquipmentOwner.equipments[(UINT)EquipmentTypes::Shield] = hPlayerShieldObj;
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));
 
@@ -2575,6 +2590,13 @@ void GameFramework::BuildRenderItems()
 		std::make_unique<MyCharacterContactListener>()
 	};
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerController));
+
+	std::unordered_map<StateType, std::unique_ptr<CharacterState>> playerStates;
+	playerStates[StateType::Idle] = std::make_unique<PlayerIdleState>();
+	playerStates[StateType::Walk] = std::make_unique<PlayerWalkState>();
+	StateMachineComponent comPlayerSM{ hPlayerObj, move(playerStates), StateType::Idle };
+	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerSM));
+
 
 	auto comEquipped = EquippedComponent(hPlayerOneHandSwordObj);
 	comEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::OneHandSword];

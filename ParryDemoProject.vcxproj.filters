@@ -84,6 +84,9 @@
     <ClCompile Include="Core\timer.cpp">
       <Filter>Core</Filter>
     </ClCompile>
+    <ClCompile Include="Core\Components\StateMachine.cpp">
+      <Filter>Core\Components</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Camera.h">
@@ -193,6 +196,9 @@
     </ClInclude>
     <ClInclude Include="Core\Components\StateMachine.h">
       <Filter>Core\Components</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\GameEvent.h">
+      <Filter>Core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

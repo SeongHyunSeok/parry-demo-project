@@ -32,6 +32,19 @@ inline std::wstring AnsiToWString(const std::string& str)
 	return std::wstring(buffer);
 };
 
+enum class InputType : UINT {
+	None = 0,
+	Walk,
+	Roll,
+	Attack,
+	Parray
+};
+
+struct PlayerInupt {
+	InputType type = InputType::None;
+	XMINT3 dir = { 0, 0, 0 };
+	bool shield = false;
+};
 
 class d3dUtil
 {

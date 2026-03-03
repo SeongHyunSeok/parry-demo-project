@@ -134,6 +134,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Core\Camera.cpp" />
+    <ClCompile Include="Core\Components\StateMachine.cpp" />
     <ClCompile Include="Core\d3dUtil.cpp" />
     <ClCompile Include="Core\DDSTextureLoader.cpp" />
     <ClCompile Include="Core\FileUtility.cpp" />
@@ -166,6 +167,7 @@
     <ClInclude Include="Core\event.h" />
     <ClInclude Include="Core\FileUtility.h" />
     <ClInclude Include="Core\FrameResource.h" />
+    <ClInclude Include="Core\GameEvent.h" />
     <ClInclude Include="Core\GameFramework.h" />
     <ClInclude Include="Core\GameTimer.h" />
     <ClInclude Include="Core\game_object.h" />

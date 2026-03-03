@@ -125,7 +125,7 @@ struct EquipmentLocation {
 
 enum class AnimationType : UINT {
 	Idle = 0,
-	// Wakl
+	// Walk
 	WalkForward,
 	WalkForwardLeft45,
 	WalkForwardRight45,
@@ -173,14 +173,16 @@ enum class AnimationType : UINT {
 	OneHandBaseShieldParryType1,
 	OneHandBaseShieldParryType2,
 	// OneHandBaseShieldWalk
-	OnewHandBaseShieldWalkForward,
-	OnewHandBaseShieldWalkForwardLeft45,
-	OnewHandBaseShieldWalkForwardRight45,
-	OnewHandBaseShieldWalkLeft,
-	OnewHandBaseShieldWalkRight,
-	OnewHandBaseShieldWalkBackward,
-	OnewHandBaseShieldWalkBackwardLeft45,
-	OnewHandBaseShieldWalkBackwardRight45
+	OneHandBaseShieldWalkForward,
+	OneHandBaseShieldWalkForwardLeft45,
+	OneHandBaseShieldWalkForwardRight45,
+	OneHandBaseShieldWalkLeft,
+	OneHandBaseShieldWalkRight,
+	OneHandBaseShieldWalkBackward,
+	OneHandBaseShieldWalkBackwardLeft45,
+	OneHandBaseShieldWalkBackwardRight45,
+	// TwoHandBase
+	TwoHandTemp,
 };
 
 struct AnimationPlayInfo {

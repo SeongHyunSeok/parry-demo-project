@@ -20,9 +20,14 @@ struct EquipmentOwnerComponent : public Component
         for (int i = 0; i < (UINT)EquipmentTypes::Count; ++i) {
             equippedCBIndices[i] = equippedCBIndexCounter++;
         }
+
+        for (int i = 0; i < (UINT)EquipmentTypes::Count; ++i) {
+            equipments[i] = std::nullopt;
+        }
     };
     EquipmentOwnerComponent(const EquipmentOwnerComponent& rhs) = delete;
     EquipmentOwnerComponent(EquipmentOwnerComponent&&) = default;
 
     UINT equippedCBIndices[(UINT)EquipmentTypes::Count];
+    std::optional<Handle<GameObject>> equipments[(UINT)EquipmentTypes::Count];
 };
