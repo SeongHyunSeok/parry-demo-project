@@ -7,6 +7,9 @@
 #include <iostream>
 #include <WindowsX.h>
 #include "Components/Mesh.h"
+#include "Camera.h"
+#include <Jolt/Physics/Collision/ShapeCast.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 
 
 Handle<GameObject> debugObj1;
@@ -290,6 +293,57 @@ namespace physics {
 				pMesh->Translation.z = pos.GetZ();
 			}
 		}
+	}
+
+	void UpdateAttachedCamera()
+	{
+		for (auto& cam : WORLD.GetComponents<Camera>()) {
+			auto hCamObject = cam.GetOwner();
+			auto pObj = WORLD.GetGameObject(hCamObject);
+			auto hOptParent = pObj->GetParent();
+			if (!hOptParent) continue;
+			auto pParentMesh = WORLD.GetComponent<MeshComponent>(*hOptParent);
+			if (!pParentMesh) continue;
+			auto pAttachedCam = WORLD.GetComponent<AttachedCamera>(hCamObject);
+			if (!pAttachedCam) continue;
+
+			const auto& xmParentPos = pParentMesh->Translation;
+			Vec3 parentPos{ xmParentPos.x, xmParentPos.y, xmParentPos.z };
+			Vec3 startPos{ parentPos };
+			startPos.SetY(startPos.GetY() + pAttachedCam->offset.GetY());
+			const auto& xmParentRot = pParentMesh->Rotation;
+			const auto parentRot = Quat::sEulerAngles(Vec3{ xmParentRot.x, xmParentRot.y, xmParentRot.z });
+			Vec3 nextCamPos = parentPos + (parentRot * pAttachedCam->offset);
+
+			auto shapeCast = RShapeCast::sFromWorldTransform(pAttachedCam->GetShape().GetPtr(), Vec3::sOne(), Mat44::sTranslation(startPos), nextCamPos - startPos);
+
+			ShapeCastSettings shapeCastSettings;
+			shapeCastSettings.SetBackFaceMode(EBackFaceMode::CollideWithBackFaces);
+			ClosestHitCollisionCollector<CastShapeCollector> collector;
+			PHYSICS_SYSTEM.GetNarrowPhaseQuery().CastShape(
+				shapeCast,
+				shapeCastSettings,
+				startPos,
+				collector,
+				SpecifiedBroadPhaseLayerFilter{ BroadPhaseLayers::NON_MOVING }
+			);
+
+			if (collector.HadHit()) {
+				const auto& hit = collector.mHit;
+				auto resolvedCenter = hit.mContactPointOn1 - hit.mPenetrationAxis.Normalized() * (hit.mPenetrationDepth + pAttachedCam->GetRadius());
+				if (resolvedCenter.LengthSq() < pAttachedCam->offset.LengthSq()) {
+					nextCamPos = startPos + resolvedCenter;
+				}
+			}
+
+			cam.LookAt(ToDirectXF3(nextCamPos), ToDirectXF3(startPos), XMFLOAT3{ 0.f, 1.f, 0.f });
+		}
+	}
+
+	Mat44 FromDirectXMat(const XMMATRIX& mat)
+	{
+		auto columnMat = XMMatrixTranspose(mat);
+		return Mat44::sLoadFloat4x4Aligned(reinterpret_cast<Float4*>(&columnMat));
 	}
 
 	void CharacterBody::Update(float dt) {
