@@ -1,6 +1,10 @@
 #pragma once
 
 #include <array>
+#include <WinUser.h>
+#include <DirectXMath.h>
+
+using namespace DirectX;
 
 class InputManager {
 private:
@@ -17,7 +21,9 @@ private:
 	// The second and third LSBs are reset to 0 in the end of each game loop.
 	std::array<uint8_t, 256> buttonStates = { 0, };
 
-	std::pair<XMINT2, XMINT2> mousePositions = { {INT32_MIN, INT32_MIN}, {INT32_MIN, INT32_MIN} };
+	XMINT2 mouseMotion;
+	XMINT2 mousePosition;
+	bool isMouseLocked = true;
 
 public:
 	static InputManager& GetInstance() {
@@ -41,13 +47,16 @@ public:
 		for (auto& state : buttonStates) {
 			state &= 1;
 		}
-		mousePositions.first = mousePositions.second;
+		mouseMotion.x = 0;
+		mouseMotion.y = 0;
 	}
-	inline void HandleMouseMovement(int x, int y) {
-		mousePositions.second = XMINT2{ x, y };
-		if (mousePositions.first.x == INT32_MIN && mousePositions.first.y == INT32_MIN) {
-			mousePositions.first = mousePositions.second;
-		}
+	inline void HandleNewMousePosition(int x, int y) {
+		mousePosition = XMINT2{ x, y };
+	}
+
+	inline void HandleMouseMovement(int offsetX, int offsetY) {
+		mouseMotion.x += offsetX;
+		mouseMotion.y += offsetY;
 	}
 
 	inline bool IsPressed(uint8_t keycode) const {
@@ -65,12 +74,17 @@ public:
 		return buttonStates[keycode] & 4;
 	}
 	inline XMINT2 GetMousePos() const {
-		return mousePositions.second;
+		return mousePosition;
 	}
 	inline XMINT2 GetMouseMotionVec() const {
-		return {
-			mousePositions.second.x - mousePositions.first.x,
-			mousePositions.second.y - mousePositions.first.y
-		};
+		return mouseMotion;
+	}
+
+	inline void LockMouse(bool lock) {
+		isMouseLocked = lock;
+	}
+
+	inline bool IsMouseLocked() const {
+		return isMouseLocked;
 	}
 };

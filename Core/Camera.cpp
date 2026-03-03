@@ -3,12 +3,13 @@
 //***************************************************************************************
 
 #include "Camera.h"
+#include <Jolt/Physics/Collision/Shape/SphereShape.h>
 
 using namespace DirectX;
 
 Camera::Camera(Handle<GameObject> owner): Component{owner}
 {
-	SetLens(0.25f * MathHelper::Pi, 1.0f, 1.0f, 1000.0f);
+	SetLens(0.25f * MathHelper::Pi, 1.0f, 0.01f, 1000.0f);
 }
 
 Camera::~Camera()
@@ -270,4 +271,8 @@ void Camera::UpdateViewMatrix()
 
 		mViewDirty = false;
 	}
+}
+
+AttachedCamera::AttachedCamera(Handle<GameObject> owner, const physics::Vec3& offset, float radius) : Component{ owner }, offset{ offset }, radius{ radius }, shape{ new physics::SphereShape{radius} }
+{
 }

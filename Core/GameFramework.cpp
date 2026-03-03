@@ -7,7 +7,8 @@
 #include <WindowsX.h>
 
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
-#include <Jolt/Physics/Collision/Shape/PlaneShape.h>
+#include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include "Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h"
 #include "Jolt/Physics/Character/CharacterVirtual.h"
 
@@ -169,6 +170,7 @@ bool GameFramework::Initialize()
 	Camera comCamera{ hCameraObj };
 	comCamera.SetPosition(0.0f, 2.0f, -15.0f);
 	WORLD.AttachComponent(hCameraObj, std::move(comCamera));
+	WORLD.AttachComponent(hCameraObj, AttachedCamera{ hCameraObj, physics::Vec3{0.f, 5.f, -13.f}, 0.1f });
 
 	// Do the initial resize code.
 	OnResize();
@@ -258,6 +260,17 @@ bool GameFramework::InitMainWindow()
 	ShowWindow(mhMainWnd, SW_SHOW);
 	UpdateWindow(mhMainWnd);
 
+	RAWINPUTDEVICE Rid;
+	Rid.usUsagePage = 0x01;
+	Rid.usUsage = 0x02;
+	Rid.dwFlags = RIDEV_NOLEGACY;
+	Rid.hwndTarget = mhMainWnd;
+
+	if (RegisterRawInputDevices(&Rid, 1, sizeof(Rid)) == FALSE) {
+		MessageBox(0, L"RegisterRawInputDevices Failed.", 0, 0);
+		return false;
+	}
+
 	return true;
 }
 
@@ -272,11 +285,18 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		if (LOWORD(wParam) == WA_INACTIVE)
 		{
 			mAppPaused = true;
+			ClipCursor(nullptr);
+			ReleaseCapture();
 			mTimerView.SetTimeMultiplier(0.0);
 		}
 		else
 		{
 			mAppPaused = false;
+			RECT clientRect;
+			GetClientRect(mhMainWnd, &clientRect);
+			MapWindowPoints(mhMainWnd, NULL, (LPPOINT)(&clientRect), 2);
+			ClipCursor(&clientRect);
+			SetCapture(mhMainWnd);
 			mTimerView.SetTimeMultiplier(1.0);
 		}
 		return 0;
@@ -371,32 +391,68 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		((MINMAXINFO*)lParam)->ptMinTrackSize.y = 200;
 		return 0;
 
-	case WM_LBUTTONDOWN:
-		InputManager::GetInstance().HandlePressed(VK_LBUTTON);
-		goto mouse_down;
-	case WM_MBUTTONDOWN:
-		InputManager::GetInstance().HandlePressed(VK_MBUTTON);
-		goto mouse_down;
-	case WM_RBUTTONDOWN:
-		InputManager::GetInstance().HandlePressed(VK_RBUTTON);
-	mouse_down:
-		OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-		InputManager::GetInstance().HandleMouseMovement(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+	case WM_INPUT:
+	{
+		UINT dwSize;
+
+		GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
+		LPBYTE lpb = new BYTE[dwSize];
+
+		GetRawInputData((HRAWINPUT)lParam, RID_INPUT, lpb, &dwSize, sizeof(RAWINPUTHEADER));
+
+		RAWINPUT* raw = (RAWINPUT*)lpb;
+
+		if (raw->header.dwType == RIM_TYPEMOUSE)
+		{
+			auto& inputManager = InputManager::GetInstance();
+			auto& mouseEvent = raw->data.mouse;
+			if ((mouseEvent.usFlags & 1) == 0) {
+				inputManager.HandleMouseMovement(mouseEvent.lLastX, mouseEvent.lLastY);
+				if (!inputManager.IsMouseLocked()) {
+					POINT currMousePoint;
+					GetCursorPos(&currMousePoint);
+					inputManager.HandleNewMousePosition(currMousePoint.x, currMousePoint.y);
+				}
+			}
+			else {
+				POINT currMousePoint;
+				GetCursorPos(&currMousePoint);
+
+				auto mousePosition = inputManager.GetMousePos();
+				inputManager.HandleMouseMovement(currMousePoint.x - mousePosition.x, currMousePoint.y - mousePosition.y);
+				inputManager.HandleNewMousePosition(currMousePoint.x, currMousePoint.y);
+			}
+
+			if (inputManager.IsMouseLocked()) {
+				POINT center{ mClientWidth / 2, mClientHeight / 2 };
+				ClientToScreen(mhMainWnd, &center);
+				SetCursorPos(center.x, center.y);
+			}
+
+			if (mouseEvent.usButtonFlags & RI_MOUSE_BUTTON_1_DOWN) {
+				inputManager.HandlePressed(VK_LBUTTON);
+			}
+			if (mouseEvent.usButtonFlags & RI_MOUSE_BUTTON_1_UP) {
+				inputManager.HandleReleased(VK_LBUTTON);
+			}
+			if (mouseEvent.usButtonFlags & RI_MOUSE_BUTTON_2_DOWN) {
+				inputManager.HandlePressed(VK_RBUTTON);
+			}
+			if (mouseEvent.usButtonFlags & RI_MOUSE_BUTTON_2_UP) {
+				inputManager.HandleReleased(VK_RBUTTON);
+			}
+			if (mouseEvent.usButtonFlags & RI_MOUSE_BUTTON_3_DOWN) {
+				inputManager.HandlePressed(VK_MBUTTON);
+			}
+			if (mouseEvent.usButtonFlags & RI_MOUSE_BUTTON_3_UP) {
+				inputManager.HandleReleased(VK_MBUTTON);
+			}
+		}
+
+		delete[] lpb;
 		return 0;
-	case WM_LBUTTONUP:
-		InputManager::GetInstance().HandleReleased(VK_LBUTTON);
-		goto mouse_up;
-	case WM_MBUTTONUP:
-		InputManager::GetInstance().HandleReleased(VK_MBUTTON);
-		goto mouse_up;
-	case WM_RBUTTONUP:
-		InputManager::GetInstance().HandleReleased(VK_RBUTTON);
-	mouse_up:
-		OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-		return 0;
-	case WM_MOUSEMOVE:
-		InputManager::GetInstance().HandleMouseMovement(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-		return 0;
+	}
+
 	case WM_KEYDOWN:
 		// Treat as key is pressed only when repeat count is one
 		if ((lParam & 0xFFFF) <= 1) {
@@ -765,7 +821,7 @@ void GameFramework::OnResize()
 	///////////
 
 	auto& camera = GetMainCamera();
-	camera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
+	camera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 0.01f, 1000.0f);
 
 	if (mSsao != nullptr)
 	{
@@ -812,13 +868,10 @@ void GameFramework::Update(float dt)
 		CloseHandle(eventHandle);
 	}
 
-
 	auto& camera = GetMainCamera();
 
 	HandleKeyboardInput(camera, dt);
 	HandleMouseInput(camera, dt);
-
-	camera.UpdateViewMatrix();
 
 	//
 	// Animate the lights (and hence shadows).
@@ -839,15 +892,18 @@ void GameFramework::Update(float dt)
 	player.Update(dt);
 
 	AnimateMaterials(dt);
-	UpdateObjectCBs(dt);
 	UpdateSkinnedCBs(dt);
+
+	physics::UpdatePhysicsSystem(dt);
+	physics::UpdateAttachedCamera();
+	camera.UpdateViewMatrix();
+
+	UpdateObjectCBs(dt);
 	UpdateMaterialBuffer(dt);
 	UpdateShadowTransform(dt);
 	UpdateMainPassCB(dt);
 	UpdateShadowPassCB(dt);
 	UpdateSsaoCB(dt);
-
-	physics::UpdatePhysicsSystem(dt);
 }
 
 void GameFramework::Draw(float dt)
@@ -1005,6 +1061,14 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 {
 	using namespace physics;
 	const auto& inputManager = InputManager::GetInstance();
+
+	// '[' key pressed
+	if (inputManager.IsJustReleased(VK_OEM_4))
+		mTimerView.SetTimeMultiplier(max(mTimerView.GetTimerMultiplier() - 0.1, 0.1));
+	// ']' key pressed
+	if (inputManager.IsJustReleased(VK_OEM_6))
+		mTimerView.SetTimeMultiplier(mTimerView.GetTimerMultiplier() + 0.1);
+
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
 	XMINT3 dir = { 0, 0, 0 };
 
@@ -1045,15 +1109,22 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {
 	const auto& inputManager = InputManager::GetInstance();
+	auto mouseMoveVec = inputManager.GetMouseMotionVec();
 	if (inputManager.IsPressed(VK_LBUTTON))
 	{
-		auto mouseMoveVec = inputManager.GetMouseMotionVec();
 		// Make each pixel correspond to a quarter of a degree.
 		float dx = XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
 		float dy = XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.y));
 
 		camera.Pitch(dy);
 		camera.RotateY(dx);
+	}
+	else {
+		auto& comPlayer = WORLD.GetComponents<PlayerComponent>().front();
+		auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(comPlayer.GetOwner());
+		pPlayerMesh->Rotation.y += XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
+		float sign = (pPlayerMesh->Rotation.y >= 0.f) - (pPlayerMesh->Rotation.y < 0.f);
+		pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
 	}
 }
 
@@ -1876,19 +1947,19 @@ void GameFramework::BuildShapeGeometry()
 
 void GameFramework::LoadSkinnedModel()
 {
-    std::vector<SkinnedVertex> vertices;
-    std::vector<UINT> indices32bit;
-    std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
+	std::vector<SkinnedVertex> vertices;
+	std::vector<UINT> indices32bit;
+	std::vector<FbxBinLoader::SubMeshInfo> skinnedSubsets;
 
-    mSkinnedAnimationSets.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(mSkinnedModelFilename),
-        std::forward_as_tuple(std::make_unique<AnimationSets>()));
-    fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
-        skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
+	mSkinnedAnimationSets.emplace(
+		std::piecewise_construct,
+		std::forward_as_tuple(mSkinnedModelFilename),
+		std::forward_as_tuple(std::make_unique<AnimationSets>()));
+	fbxBinLoader.LoadFbxBin(mSkinnedModelFilename, vertices, indices32bit,
+		skinnedSubsets, mSkinnedAnimationSets[mSkinnedModelFilename].get());
 
-    // Robot.txt
-    std::unordered_map<AnimationType, std::string> moveTypeToName =
+	// Robot.txt
+	std::unordered_map<AnimationType, std::string> moveTypeToName =
 	{
 		{AnimationType::Idle,"Skeleton|Stand_Idle_A_1"},
 		// Walk
@@ -1949,87 +2020,87 @@ void GameFramework::LoadSkinnedModel()
 		{AnimationType::OneHandBaseShieldWalkBackward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B"}
 	};
 
-    auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
-    animationSet->generateAnimationSet(moveTypeToName);
-    animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
-        50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
-        * XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
-    );
-    animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
-        12, XMMatrixScaling(0.7f, 0.7f, 0.7f)* XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
-        * XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
-    );
+	auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
+	animationSet->generateAnimationSet(moveTypeToName);
+	animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
+		50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
+		* XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
+	);
+	animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
+		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
+		* XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
+	);
 
-    std::vector<std::uint16_t> indices;
-    indices.reserve(indices32bit.size());
-    for (UINT index : indices32bit) {
-        indices.push_back(index);
-    }
+	std::vector<std::uint16_t> indices;
+	indices.reserve(indices32bit.size());
+	for (UINT index : indices32bit) {
+		indices.push_back(index);
+	}
 
-    const UINT vbByteSize = (UINT)vertices.size() * sizeof(SkinnedVertex);
-    const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(SkinnedVertex);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-    auto geo = std::make_unique<MeshGeometry>();
-    geo->Name = mSkinnedModelFilename;
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = mSkinnedModelFilename;
 
-    ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-    CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
-    ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-    CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
-    geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-        mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
 
-    geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-        mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
 
-    geo->VertexByteStride = sizeof(SkinnedVertex);
-    geo->VertexBufferByteSize = vbByteSize;
-    geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-    geo->IndexBufferByteSize = ibByteSize;
+	geo->VertexByteStride = sizeof(SkinnedVertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
 
-    for (UINT i = 0; i < (UINT)skinnedSubsets.size(); ++i)
-    {
-        SubmeshGeometry submesh;
-        std::string name(move(skinnedSubsets[i].name));
+	for (UINT i = 0; i < (UINT)skinnedSubsets.size(); ++i)
+	{
+		SubmeshGeometry submesh;
+		std::string name(move(skinnedSubsets[i].name));
 
-        submesh.IndexCount = (UINT)skinnedSubsets[i].indexCount;
-        submesh.StartIndexLocation = skinnedSubsets[i].startIndexLocation;
-        submesh.BaseVertexLocation = skinnedSubsets[i].baseVertexLocation;
+		submesh.IndexCount = (UINT)skinnedSubsets[i].indexCount;
+		submesh.StartIndexLocation = skinnedSubsets[i].startIndexLocation;
+		submesh.BaseVertexLocation = skinnedSubsets[i].baseVertexLocation;
 
-        geo->DrawArgs[name] = submesh;
-    }
+		geo->DrawArgs[name] = submesh;
+	}
 
-    mGeometries[geo->Name] = std::move(geo);
+	mGeometries[geo->Name] = std::move(geo);
 
-    mSkinnedMats.resize(skinnedSubsets.size());
-    mSkinnedMats[0].Name = std::string("soldier_head");
-    mSkinnedMats[0].DiffuseAlbedo = { 0.7f, 0.7f, 0.7f, 1.0f };
-    mSkinnedMats[0].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-    mSkinnedMats[0].Roughness = 0.5;
-    mSkinnedMats[0].AlphaClip = false;
-    mSkinnedMats[0].MaterialTypeName = std::string("Skinned");
-    mSkinnedMats[0].DiffuseMapName = std::string("checkboard.dds");
-    mSkinnedMats[0].NormalMapName = std::string("upBody_norm.dds");
+	mSkinnedMats.resize(skinnedSubsets.size());
+	mSkinnedMats[0].Name = std::string("soldier_head");
+	mSkinnedMats[0].DiffuseAlbedo = { 0.7f, 0.7f, 0.7f, 1.0f };
+	mSkinnedMats[0].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+	mSkinnedMats[0].Roughness = 0.5;
+	mSkinnedMats[0].AlphaClip = false;
+	mSkinnedMats[0].MaterialTypeName = std::string("Skinned");
+	mSkinnedMats[0].DiffuseMapName = std::string("checkboard.dds");
+	mSkinnedMats[0].NormalMapName = std::string("upBody_norm.dds");
 
-    mSkinnedMats[1].Name = std::string("soldier_upBody");
-    mSkinnedMats[1].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
-    mSkinnedMats[1].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-    mSkinnedMats[1].Roughness = 0.4;
-    mSkinnedMats[1].AlphaClip = false;
-    mSkinnedMats[1].MaterialTypeName = std::string("Skinned");
-    mSkinnedMats[1].DiffuseMapName = std::string("checkboard.dds");
-    mSkinnedMats[1].NormalMapName = std::string("upBody_norm.dds");
+	mSkinnedMats[1].Name = std::string("soldier_upBody");
+	mSkinnedMats[1].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+	mSkinnedMats[1].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+	mSkinnedMats[1].Roughness = 0.4;
+	mSkinnedMats[1].AlphaClip = false;
+	mSkinnedMats[1].MaterialTypeName = std::string("Skinned");
+	mSkinnedMats[1].DiffuseMapName = std::string("checkboard.dds");
+	mSkinnedMats[1].NormalMapName = std::string("upBody_norm.dds");
 
-    mSkinnedMats[2].Name = std::string("soldier_upBody2");
-    mSkinnedMats[2].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
-    mSkinnedMats[2].FresnelR0 = { 0.05f, 0.05f, 0.05f };
-    mSkinnedMats[2].Roughness = 0.3;
-    mSkinnedMats[2].AlphaClip = false;
-    mSkinnedMats[2].MaterialTypeName = std::string("Skinned");
-    mSkinnedMats[2].DiffuseMapName = std::string("checkboard.dds");
-    mSkinnedMats[2].NormalMapName = std::string("upBody_norm.dds");
+	mSkinnedMats[2].Name = std::string("soldier_upBody2");
+	mSkinnedMats[2].DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+	mSkinnedMats[2].FresnelR0 = { 0.05f, 0.05f, 0.05f };
+	mSkinnedMats[2].Roughness = 0.3;
+	mSkinnedMats[2].AlphaClip = false;
+	mSkinnedMats[2].MaterialTypeName = std::string("Skinned");
+	mSkinnedMats[2].DiffuseMapName = std::string("checkboard.dds");
+	mSkinnedMats[2].NormalMapName = std::string("upBody_norm.dds");
 }
 
 void GameFramework::BuildFbxModelGeometry()
@@ -2451,8 +2522,14 @@ void GameFramework::BuildRenderItems()
 	};
 	WORLD.AttachComponent(hQuadObj, std::move(comQuadMesh));
 	WORLD.AttachComponent(hQuadObj, NonAnimatedComponent(hQuadObj));
-	auto pShape = new PlaneShape{ Plane::sFromPointAndNormal(Vec3::sZero(), Vec3::sAxisY()) };
-	StaticBody comQuadBody{ hQuadObj, bodyInterface, pShape, Vec3::sZero(), Quat::sIdentity() };
+	StaticCompoundShapeSettings compoundShapeSettings;
+	ShapeRefC pPlaneShape{ new BoxShape{ Vec3{50.f, 0.1f, 50.f} } };
+	compoundShapeSettings.AddShape(Vec3(0.f, -0.1f, 0.f), Quat::sIdentity(), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(20.f, 0.f, 0.f), Quat::sRotation(Vec3::sAxisZ(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(-20.f, 0.f, 0.f), Quat::sRotation(-Vec3::sAxisZ(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(0.f, 0.f, 20.f), Quat::sRotation(-Vec3::sAxisX(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(0.f, 0.f, -20.f), Quat::sRotation(Vec3::sAxisX(), MathHelper::Pi / 2.f), pPlaneShape);
+	StaticBody comQuadBody{ hQuadObj, bodyInterface, compoundShapeSettings.Create().Get(), Vec3::sZero(), Quat::sIdentity() };
 	WORLD.AttachComponent(hQuadObj, std::move(comQuadBody));
 
 	auto hBoxObj = WORLD.AddObject();
@@ -2546,6 +2623,8 @@ void GameFramework::BuildRenderItems()
 	UINT equippedCBIndexCounter = 0;
 
 	auto hPlayerObj = WORLD.AddObject();
+	auto pPlayerObj = WORLD.GetGameObject(hPlayerObj);
+	pPlayerObj->AddChild(WORLD, GetMainCamera().GetOwner());
 	WORLD.AttachComponent(hPlayerObj, PlayerComponent(hPlayerObj));
 
 	MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
@@ -2573,7 +2652,7 @@ void GameFramework::BuildRenderItems()
 	comPlayerAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
 	comPlayerAnimation.mSkinnedModelAnimationController =
 		std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
-	    //comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
+	//comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
 	EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
 	comPlayerEquipmentOwner.equipments[(UINT)EquipmentTypes::OneHandSword] = hPlayerOneHandSwordObj;
 	comPlayerEquipmentOwner.equipments[(UINT)EquipmentTypes::Shield] = hPlayerShieldObj;
