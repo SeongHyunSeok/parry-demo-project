@@ -56,6 +56,15 @@ void StateMachineComponent::ChangeState(StateType targetStateType, StateProperty
 	currentState->Enter(this, stateProperty);
 }
 
+void StateMachineComponent::SetOwnerAnimation(AnimationType animationType, float speed)
+{
+	auto hOwner = GetOwner();
+	auto pComAni = WORLD.GetComponent<AnimationComponent>(owner);
+	if (pComAni) {
+		pComAni->mSkinnedModelAnimationController->SetAnimation(animationType, speed);
+	}
+}
+
 void StateMachineComponent::SetOwnerAnimation(AnimationType animationType)
 {
 	auto hOwner = GetOwner();
@@ -265,7 +274,8 @@ void PlayerRollState::Enter(StateMachineComponent* pStateMachine, StateProperty 
 {
 	direction = property.dir;
 
-	pStateMachine->SetOwnerAnimation(GetAnimationType());
+	// TO DO : change speed by status
+	pStateMachine->SetOwnerAnimation(GetAnimationType(), 1.5f);
 }
 
 void PlayerRollState::Leave(StateMachineComponent* pStateMachine)

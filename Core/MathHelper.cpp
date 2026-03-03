@@ -1,6 +1,7 @@
 #include "MathHelper.h"
 #include <float.h>
 #include <cmath>
+#include <Jolt/Jolt.h>
 
 using namespace DirectX;
 
@@ -27,6 +28,14 @@ float MathHelper::AngleFromXY(float x, float y)
 		theta = atanf(y / x) + Pi; // in [0, 2*pi).
 
 	return theta;
+}
+
+DirectX::XMVECTOR MathHelper::QuaternionFromPithYawRoll(float pitch, float yaw, float roll)
+{
+
+	JPH::Vec3 v{ pitch, yaw, roll };
+	auto quat = JPH::Quat::sEulerAngles(v);
+	return XMVECTOR{ quat.GetX(), quat.GetY(), quat.GetZ(), quat.GetW() };
 }
 
 XMVECTOR MathHelper::RandUnitVec3()

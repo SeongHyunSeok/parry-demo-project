@@ -41,6 +41,7 @@ public:
 	void ChangeStateByInput(const PlayerInupt& playerInput);
 	void ChangeState(StateType targetStateType, StateProperty property);
 	void SetOwnerAnimation(AnimationType animationType);
+	void SetOwnerAnimation(AnimationType animationType, float speed);
 	bool CheckAnimationEnd();
 private:
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> states;

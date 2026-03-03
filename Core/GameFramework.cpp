@@ -1102,9 +1102,9 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 
 	player.Input(playerInput);
 
-	auto playerController = WORLD.GetComponent<physics::CharacterBody>(player.GetOwner());
-	assert(playerController);
-	playerController->inJump = inputManager.IsJustPressed(VK_SPACE);
+	//auto playerController = WORLD.GetComponent<physics::CharacterBody>(player.GetOwner());
+	//assert(playerController);
+	//playerController->inJump = inputManager.IsJustPressed(VK_SPACE);
 }
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {

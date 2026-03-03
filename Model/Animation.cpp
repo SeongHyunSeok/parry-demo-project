@@ -128,7 +128,7 @@ void AnimationSet::Interpolate(
 		boneToParents[boneFrameIndex].scale = Vector3::Add(boneToParents[boneFrameIndex].scale, scaleResult, totalWeight);
 
 		if (totalWeight < 1.0f) {
-			XMVECTOR previousRotation = XMLoadFloat3(&boneToParents[boneFrameIndex].rotation) / (1 - totalWeight);
+			XMVECTOR previousRotation = XMLoadFloat3(&boneToParents[boneFrameIndex].rotationEuler) / (1 - totalWeight);
 			XMVECTOR rotationResultVec = XMLoadFloat3(&rotationResult);
 			XMVECTOR rotationSigns = {
 				(0.0f <= rotationResult.x) - (rotationResult.x < 0.0f),
@@ -150,7 +150,14 @@ void AnimationSet::Interpolate(
 			);
 		}
 
-		boneToParents[boneFrameIndex].rotation = Vector3::Add(boneToParents[boneFrameIndex].rotation, rotationResult, totalWeight);
+		XMVECTOR quaternion = MathHelper::QuaternionFromPithYawRoll(
+			rotationResult.x,
+			rotationResult.y,
+			rotationResult.z
+		);
+		XMStoreFloat4(&boneToParents[boneFrameIndex].rotationQuaternion, XMLoadFloat4(&boneToParents[boneFrameIndex].rotationQuaternion) + (quaternion * totalWeight));
+		
+		boneToParents[boneFrameIndex].rotationEuler = Vector3::Add(boneToParents[boneFrameIndex].rotationEuler, rotationResult, totalWeight);
 		boneToParents[boneFrameIndex].translation = Vector3::Add(boneToParents[boneFrameIndex].translation, translationResult, totalWeight);
 
 		//XMMATRIX S = XMMatrixScaling(scaleResult.x, scaleResult.y, scaleResult.z);
@@ -233,7 +240,10 @@ void AnimationSets::GetFinalTransforms(AnimationPlayInfo& playInfo,
 	std::vector<XMFLOAT4X4> toParentTransforms(numBones);
 	for (int boneFrameIndex = 0; boneFrameIndex < numBones; ++boneFrameIndex) {
 		XMMATRIX S = XMMatrixScaling(toParentBoneTransformInfo[boneFrameIndex].scale.x, toParentBoneTransformInfo[boneFrameIndex].scale.y, toParentBoneTransformInfo[boneFrameIndex].scale.z);
-		XMMATRIX R = XMMatrixMultiply(XMMatrixMultiply(XMMatrixRotationX(toParentBoneTransformInfo[boneFrameIndex].rotation.x), XMMatrixRotationY(toParentBoneTransformInfo[boneFrameIndex].rotation.y)), XMMatrixRotationZ(toParentBoneTransformInfo[boneFrameIndex].rotation.z));
+		XMMATRIX R = XMMatrixRotationQuaternion(
+			XMLoadFloat4(&toParentBoneTransformInfo[boneFrameIndex].rotationQuaternion)
+		);
+			//XMMatrixMultiply(XMMatrixMultiply(XMMatrixRotationX(toParentBoneTransformInfo[boneFrameIndex].rotation.x), XMMatrixRotationY(toParentBoneTransformInfo[boneFrameIndex].rotation.y)), XMMatrixRotationZ(toParentBoneTransformInfo[boneFrameIndex].rotation.z));
 		XMMATRIX T = XMMatrixTranslation(toParentBoneTransformInfo[boneFrameIndex].translation.x, toParentBoneTransformInfo[boneFrameIndex].translation.y, toParentBoneTransformInfo[boneFrameIndex].translation.z);
 		XMStoreFloat4x4(&toParentTransforms[boneFrameIndex], XMMatrixMultiply(XMMatrixMultiply(S, R), T));
 	}
@@ -348,6 +358,12 @@ void AnimationController::SetAnimation(AnimationType type)
 	}
 }
 
+void AnimationController::SetAnimation(AnimationType type, float speed)
+{
+	SetAnimation(type);
+	SetTrackSpeed(type, speed);
+}
+
 void AnimationController::SetTrackSpeed(AnimationType type, float speed)
 {
 	animationTracks[type].SetSpeed(speed);
@@ -358,7 +374,7 @@ void AnimationController::SetTrackPeriod(AnimationType type, float startTime, fl
 	animationTracks[type].SetPeriod(startTime, endTime);
 }
 
-void AnimationController::SetTrackAnimationType(AnimationType type, AnimationPlayType playType)
+void AnimationController::SetTrackAnimationPlayType(AnimationType type, AnimationPlayType playType)
 {
 	animationTracks[type].SetAnimationPlayType(playType);
 }

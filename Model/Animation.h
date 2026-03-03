@@ -73,7 +73,8 @@ public:
 struct BoneTransformInfo
 {
 	XMFLOAT3 scale = { 0.0f, 0.0f, 0.0f };
-	XMFLOAT3 rotation = { 0.0f, 0.0f, 0.0f };
+	XMFLOAT4 rotationQuaternion = { 0.0f, 0.0f, 0.0f, 0.0f };
+	XMFLOAT3 rotationEuler = { 0.0f, 0.0f, 0.0f };
 	XMFLOAT3 translation = { 0.0f, 0.0f, 0.0f };
 };
 
@@ -278,10 +279,11 @@ public:
 	UINT curAnimationPlayIndex = 0;
 public:
 	void SetAnimation(AnimationType type);
+	void SetAnimation(AnimationType type, float speed);
 
 	void SetTrackSpeed(AnimationType type, float speed);
 	void SetTrackPeriod(AnimationType type, float startTime, float endTime);
-	void SetTrackAnimationType(AnimationType type, AnimationPlayType playType);
+	void SetTrackAnimationPlayType(AnimationType type, AnimationPlayType playType);
 
 	// Called every frame and increments the time position, interpolates the 
 	// animations for each bone based on the current animation clip, and 
