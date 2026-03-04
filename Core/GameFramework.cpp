@@ -170,7 +170,7 @@ bool GameFramework::Initialize()
 	Camera comCamera{ hCameraObj };
 	comCamera.SetPosition(0.0f, 2.0f, -15.0f);
 	WORLD.AttachComponent(hCameraObj, std::move(comCamera));
-	WORLD.AttachComponent(hCameraObj, AttachedCamera{ hCameraObj, physics::Vec3{0.f, 5.f, -13.f}, 0.1f });
+	WORLD.AttachComponent(hCameraObj, AttachedCamera{ hCameraObj, physics::Vec3{0.f, 2.f, -13.f}, 0.1f });
 
 	// Do the initial resize code.
 	OnResize();
