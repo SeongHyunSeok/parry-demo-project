@@ -74,7 +74,6 @@ struct BoneTransformInfo
 {
 	XMFLOAT3 scale = { 0.0f, 0.0f, 0.0f };
 	XMFLOAT4 rotationQuaternion = { 0.0f, 0.0f, 0.0f, 0.0f };
-	XMFLOAT3 rotationEuler = { 0.0f, 0.0f, 0.0f };
 	XMFLOAT3 translation = { 0.0f, 0.0f, 0.0f };
 };
 
