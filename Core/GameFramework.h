@@ -245,4 +245,10 @@ private:
 
     // input
     POINT mLastMousePos;
+
+
+    // Debug
+    bool enableFatalAttackEvent = false;
+    XMINT3 hitDir = { 0, 0, 0 };
+    bool enableParryEvent = false;
 };

@@ -889,6 +889,31 @@ void GameFramework::Update(float dt)
 
 	// Update Objects
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+
+	// Debug
+	if (enableFatalAttackEvent) {
+		GameEvent ge;
+		ge.eventType = GameEventType::ActiveFatalAttack;
+		player.HandleGameEvent(ge);
+		enableFatalAttackEvent = false;
+	}
+	if (hitDir.z != 0 || hitDir.y != 0) {
+		GameEvent ge;
+		ge.eventType = GameEventType::Hit;
+		ge.dir = hitDir;
+		ge.strength = 0.2f;
+		player.HandleGameEvent(ge);
+
+		hitDir = { 0, 0, 0 };
+	}
+	if (enableParryEvent) {
+		GameEvent ge;
+		ge.eventType = GameEventType::Parried;
+		player.HandleGameEvent(ge);
+		enableParryEvent = false;
+	}
+	//-----------------------
+
 	player.Update(dt);
 
 	AnimateMaterials(dt);
@@ -1100,7 +1125,30 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 		}
 	}
 
+	if (inputManager.IsJustPressed(VK_LBUTTON)) {
+		playerInput.type = InputType::Attack;
+	}
+
+	if (playerInput.shield && inputManager.IsJustPressed(VK_RBUTTON)) {
+		playerInput.type = InputType::Parray;
+	}
+
 	player.Input(playerInput);
+
+	// Degug
+	if (inputManager.IsPressed('K'))
+		enableFatalAttackEvent = true;
+	if (inputManager.IsPressed(VK_UP))
+		hitDir.y += 1;
+	if (inputManager.IsPressed(VK_DOWN))
+		hitDir.y -= 1;
+	if (inputManager.IsPressed(VK_LEFT))
+		hitDir.z += 1;
+	if (inputManager.IsPressed(VK_RIGHT))
+		hitDir.z -= 1;
+	if (inputManager.IsPressed('L'))
+		enableParryEvent = true;
+	//----------------------------------
 
 	//auto playerController = WORLD.GetComponent<physics::CharacterBody>(player.GetOwner());
 	//assert(playerController);
@@ -1981,11 +2029,11 @@ void GameFramework::LoadSkinnedModel()
 		{AnimationType::RollLeft,"Skeleton|Low_Roll_F_L90"},
 		{AnimationType::RollBackward,"Skeleton|Low_Roll_B"},
 		// Hit
-		{ AnimationType::HitBackType1,"Skeleton|Hit_B_1" },
-		{ AnimationType::HitBackType2,"Skeleton|Hit_B_2" },
-		{ AnimationType::HitBackType3,"Skeleton|Hit_B_3" },
-		{ AnimationType::HitFrontType1,"Skeleton|Hit_F_1" },
-		{ AnimationType::HitFrontType2,"Skeleton|Hit_F_2" },
+		{ AnimationType::HitBackType1,"Skeleton|Hit_B_3" },
+		{ AnimationType::HitBackType2,"Skeleton|Hit_B_1" },
+		{ AnimationType::HitBackType3,"Skeleton|Hit_B_2" },
+		{ AnimationType::HitFrontType1,"Skeleton|Hit_F_2" },
+		{ AnimationType::HitFrontType2,"Skeleton|Hit_F_1" },
 		{ AnimationType::HitFrontType3,"Skeleton|Hit_F_3" },
 		{ AnimationType::HitFrontDown,"Skeleton|Hit_F_Down" },
 		{ AnimationType::HitFrontUp,"Skeleton|Hit_F_Up" },
@@ -1998,6 +2046,8 @@ void GameFramework::LoadSkinnedModel()
 		{ AnimationType::OneHandBaseAttackTypeC_6,"Skeleton|OneHand_Base_Attack_C_6" },
 		{ AnimationType::OneHandBaseAttackTypeC_7,"Skeleton|OneHand_Base_Attack_C_7" },
 		{ AnimationType::OneHandBaseAttackTypeC_8,"Skeleton|OneHand_Base_Attack_C_8" },
+		// Parried
+		{ AnimationType::Parried,"Skeleton|Action_A_1" },
 		// OneHandBaseFatal
 		{ AnimationType::OneHandBaseFatalAttack,"Skeleton|OneHand_Base_Fatal_Attack_2" },
 		{ AnimationType::OneHandBaseFatalHit,"Skeleton|OneHand_Base_Fatal_Hit_2" },
@@ -2020,8 +2070,40 @@ void GameFramework::LoadSkinnedModel()
 		{AnimationType::OneHandBaseShieldWalkBackward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B"}
 	};
 
+
+	std::unordered_map<AnimationType, AnimationSetInfo> animationSetInfos = {
+		{ AnimationType::OneHandBaseAttackTypeC_1,AnimationSetInfo(0.0, 1.0f)},
+		{ AnimationType::OneHandBaseAttackTypeC_2,AnimationSetInfo(0.0, 1.0f) },
+		{ AnimationType::OneHandBaseAttackTypeC_3,AnimationSetInfo(0.0, 1.0f) },
+		{ AnimationType::OneHandBaseAttackTypeC_4,AnimationSetInfo(0.0, 1.0f) },
+		{ AnimationType::OneHandBaseAttackTypeC_5,AnimationSetInfo(0.0, 1.0f) },
+		{ AnimationType::OneHandBaseAttackTypeC_6,AnimationSetInfo(0.0, 1.0f) },
+		{ AnimationType::OneHandBaseAttackTypeC_7,AnimationSetInfo(0.0, 1.0f) },
+		{ AnimationType::OneHandBaseAttackTypeC_8,AnimationSetInfo(0.0, 1.0f) },
+		{ AnimationType::OneHandBaseShieldParryType1,AnimationSetInfo(0.0, 1.0f) },
+	};
+
+	std::vector<AnimationType> changeEndTime = {
+		AnimationType::OneHandBaseAttackTypeC_1,
+		AnimationType::OneHandBaseAttackTypeC_2,
+		AnimationType::OneHandBaseAttackTypeC_3,
+		AnimationType::OneHandBaseAttackTypeC_4,
+		AnimationType::OneHandBaseAttackTypeC_5,
+		AnimationType::OneHandBaseAttackTypeC_6,
+		AnimationType::OneHandBaseAttackTypeC_7,
+		AnimationType::OneHandBaseAttackTypeC_8
+	};
+
 	auto animationSet = mSkinnedAnimationSets[mSkinnedModelFilename].get();
 	animationSet->generateAnimationSet(moveTypeToName);
+	animationSet->SetAnimationSetInfos(move(animationSetInfos));
+
+	for (auto& it : changeEndTime) {
+		animationSet->animationSets[it]->endTime = animationSet->animationSets[it]->endTime / 2;
+	}
+	animationSet->animationSets[AnimationType::Parried]->startTime = 0.7f;
+	animationSet->animationSets[AnimationType::Parried]->endTime = 1.2f;
+
 	animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
 		50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
 		* XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
@@ -2678,7 +2760,11 @@ void GameFramework::BuildRenderItems()
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> playerStates;
 	playerStates[StateType::Idle] = std::make_unique<PlayerIdleState>();
 	playerStates[StateType::Walk] = std::make_unique<PlayerWalkState>();
-	playerStates[StateType::Roll] = std::make_unique< PlayerRollState>();
+	playerStates[StateType::Roll] = std::make_unique<PlayerRollState>();
+	playerStates[StateType::Attack] = std::make_unique<PlayerAttackState>();
+	playerStates[StateType::Parry] = std::make_unique<PlayerParryState>();
+	playerStates[StateType::Hit] = std::make_unique<PlayerHitState>();
+	playerStates[StateType::Parried] = std::make_unique<PlayerParriedState>();
 	StateMachineComponent comPlayerSM{ hPlayerObj, move(playerStates), StateType::Idle };
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerSM));
 

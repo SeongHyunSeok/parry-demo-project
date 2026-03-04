@@ -92,7 +92,6 @@ public:
 
 	float startTime = 0.0f;
 	float endTime = 0.0f;
-	float length = 0.0f;
 
 public:
 	void Interpolate(
@@ -153,6 +152,8 @@ enum class AnimationType : UINT {
 	HitFrontType3,
 	HitFrontDown,
 	HitFrontUp,
+	// Parried
+	Parried,
 	// OneHandBaseAttack
 	OneHandBaseAttackTypeC_1,
 	OneHandBaseAttackTypeC_2,
@@ -186,6 +187,16 @@ enum class AnimationType : UINT {
 	TwoHandTemp,
 };
 
+struct AnimationSetInfo
+{
+	AnimationSetInfo() {}
+	AnimationSetInfo(float effectiveStartPos, float effectiveEndPos) 
+		: effectiveStartTimePos(effectiveStartPos), effectiveEndTimePos(effectiveEndPos) {}
+
+	float effectiveStartTimePos = 0.0f;
+	float effectiveEndTimePos = 0.0f;
+};
+
 struct AnimationPlayInfo {
 	AnimationType animationType = AnimationType::Idle;
 
@@ -204,6 +215,7 @@ public:
 	~AnimationSets();
 public:
 	std::unordered_map<AnimationType, AnimationSet*> animationSets;
+	std::unordered_map<AnimationType, AnimationSetInfo> animationSetInfos;
 	std::vector<int> boneHierarchy;
 	std::vector<DirectX::XMFLOAT4X4> boneOffsets;
 	std::unordered_map<EquipmentTypes, EquipmentLocation> equipmentLocations;
@@ -226,6 +238,8 @@ public:
 		bool blending,
 		float blendingWeight,
 		AnimationPlayInfo* blendingTargetPlayInfo = nullptr)const;
+
+	void SetAnimationSetInfos(std::unordered_map<AnimationType, AnimationSetInfo>&& infos);
 };
 
 enum class AnimationPlayType : int {
@@ -294,6 +308,8 @@ public:
 	DirectX::XMFLOAT3 GetRootBoneTranslationDiff();
 
 	bool IsAnimationEnd();
+	bool IsAnimationStarting();
+	bool IsTimposInEffectiveFrame();
 private:
 	void UpdateTimePosition(float elapsedTime);
 	void UpdateTimePosition(float elapsedTime, UINT playInfoIndex);

@@ -22,7 +22,7 @@ void StateMachineComponent::HandleInput(const PlayerInupt& playerInput)
 	currentState->HandleInput(this, playerInput);
 }
 
-void StateMachineComponent::HandleEvent(GameEvent event)
+void StateMachineComponent::HandleEvent(GameEvent& event)
 {
 	currentState->HandleEvent(this, event);
 }
@@ -83,6 +83,15 @@ bool StateMachineComponent::CheckAnimationEnd()
 	}
 }
 
+bool StateMachineComponent::IsInValidFrame()
+{
+	auto hOwner = GetOwner();
+	auto pComAni = WORLD.GetComponent<AnimationComponent>(hOwner);
+	if (pComAni) {
+		return pComAni->mSkinnedModelAnimationController->IsTimposInEffectiveFrame();
+	}
+}
+
 AnimationType PlayerIdleState::GetAnimationType(StateMachineComponent* pStateMachine) {
 	if (shield) {
 		auto hOwner = pStateMachine->GetOwner();
@@ -135,10 +144,10 @@ void PlayerIdleState::HandleInput(StateMachineComponent* pStateMachine, const Pl
 	}
 }
 
-void PlayerIdleState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent event)
+void PlayerIdleState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
 {
 	if (event.eventType == GameEventType::Hit) {
-		pStateMachine->ChangeState(StateType::Hit, StateProperty());
+		pStateMachine->ChangeState(StateType::Hit, createHitStatePropertyFromGameEvent(event, shield));
 	}
 }
 
@@ -194,10 +203,10 @@ void PlayerWalkState::HandleInput(StateMachineComponent* pStateMachine, const Pl
 	}
 }
 
-void PlayerWalkState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent event)
+void PlayerWalkState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
 {
 	if (event.eventType == GameEventType::Hit) {
-		pStateMachine->ChangeState(StateType::Hit, StateProperty());
+		pStateMachine->ChangeState(StateType::Hit, createHitStatePropertyFromGameEvent(event, shield));
 	}
 }
 
@@ -297,7 +306,7 @@ void PlayerRollState::HandleInput(StateMachineComponent* pStateMachine, const Pl
 	}
 }
 
-void PlayerRollState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent event)
+void PlayerRollState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
 {
 	// TO DO : Implement to ignore damages in specific period
 }
@@ -331,3 +340,212 @@ AnimationType PlayerRollState::GetAnimationType()
 	}
 	return animationType;
 }
+
+void PlayerAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty property)
+{
+	currentComboCount = 0;
+
+	pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
+}
+
+void PlayerAttackState::Leave(StateMachineComponent* pStateMachine)
+{
+	currentComboCount = 0;
+	doNextCombo = false;
+	fatalAttack = false;
+}
+
+void PlayerAttackState::Update(StateMachineComponent* pStateMachine)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		fatalAttack = false;
+		if (doNextCombo) {
+			currentComboCount = (currentComboCount + 1) % MAX_COMBO_COUNT;
+			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
+
+			doNextCombo = false;
+		}
+		else {
+			pStateMachine->ChangeState(StateType::Idle, StateProperty());
+		}
+	}
+}
+
+void PlayerAttackState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
+	if (playerInput.type == InputType::Attack) {
+		doNextCombo = true;
+	}
+	if (pStateMachine->CheckAnimationEnd() && !doNextCombo) {
+		pStateMachine->ChangeStateByInput(playerInput);
+	}
+}
+
+void PlayerAttackState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
+{
+	if (event.eventType == GameEventType::ActiveFatalAttack) {
+		auto hOwner = pStateMachine->GetOwner();
+		const auto comAnimation = WORLD.GetComponent<AnimationComponent>(hOwner);
+		if (comAnimation && comAnimation->mSkinnedModelAnimationController->IsAnimationStarting()) {
+			currentComboCount = 0;
+			doNextCombo = false;
+			fatalAttack = true;
+			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
+		}
+	}
+	// TO DO : Implement to do not enter to Hit state in specific status
+	else if (event.eventType == GameEventType::Hit) {
+		event.strength = event.strength;
+		pStateMachine->ChangeState(StateType::Hit, createHitStatePropertyFromGameEvent(event, false));
+	}
+	else if (event.eventType == GameEventType::Parried) {
+		pStateMachine->ChangeState(StateType::Parried, StateProperty());
+	}
+}
+
+AnimationType PlayerAttackState::GetAnimationType(StateMachineComponent* pStateMachine)
+{
+	auto hOwner = pStateMachine->GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+	if (comEquipmentOwner) {
+
+		if (comEquipmentOwner->equipments[(UINT)EquipmentTypes::TwoHandSword]) 
+		{
+			if (fatalAttack) {
+				return AnimationType::TwoHandTemp;
+			}
+			return AnimationType::TwoHandTemp;
+		}
+		else if (comEquipmentOwner->equipments[(UINT)EquipmentTypes::OneHandSword]) 
+		{
+			if (fatalAttack) {
+				return AnimationType::OneHandBaseFatalAttack;
+			}
+			return AnimationType((UINT)AnimationType::OneHandBaseAttackTypeC_1 + (currentComboCount));
+		}
+	}
+	return AnimationType::OneHandBaseAttackTypeC_1;
+}
+
+void PlayerParryState::Enter(StateMachineComponent* pStateMachine, StateProperty property)
+{
+	// TO DO: change Parry speed by a shield type
+	pStateMachine->SetOwnerAnimation(AnimationType::OneHandBaseShieldParryType1, 1.2f);
+}
+
+void PlayerParryState::Leave(StateMachineComponent* pStateMachine)
+{
+}
+
+void PlayerParryState::Update(StateMachineComponent* pStateMachine)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		pStateMachine->ChangeState(StateType::Idle, StateProperty());
+	}
+}
+
+void PlayerParryState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		pStateMachine->ChangeStateByInput(playerInput);
+	}
+}
+
+void PlayerParryState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
+{
+	// TO DO : Implement to ignore Hit in specific period
+}
+
+
+void PlayerHitState::Enter(StateMachineComponent* pStateMachine, StateProperty property)
+{
+	direction = property.dir;
+	strength = property.strength;
+	shield = property.shield;
+	if (strength >= FATATL_HIT_STRENGTH) {
+		fatalHit = true;
+	}
+	pStateMachine->SetOwnerAnimation(GetAnimationType());
+}
+
+void PlayerHitState::Leave(StateMachineComponent* pStateMachine)
+{
+	direction = { 0, 0, 1 };
+	strength = 0.0f;
+	fatalHit = false;
+	shield = false;
+}
+
+void PlayerHitState::Update(StateMachineComponent* pStateMachine)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		pStateMachine->ChangeState(StateType::Idle, StateProperty());
+	}
+}
+
+void PlayerHitState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		pStateMachine->ChangeStateByInput(playerInput);
+	}
+}
+
+void PlayerHitState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
+{
+	// TO DO : Implement to ignore damage in specific period
+}
+
+AnimationType PlayerHitState::GetAnimationType()
+{
+	if (fatalHit) {
+		return AnimationType::OneHandBaseFatalHit;
+	}
+	if (direction.y > 0) {
+		return AnimationType::HitFrontUp;
+	}
+	if (direction.y < 0) {
+		return AnimationType::HitFrontDown;
+	}
+	UINT strengthIndex = 0 + (strength >= MIDDLE_HIT_STRENGTH) + (strength >= HIGH_HIT_STRENGTH);
+	if (direction.z < 0) {
+		return AnimationType((UINT)AnimationType::HitBackType1 + strengthIndex);
+	}
+
+	if (shield)
+		return AnimationType::OneHandBaseShieldHitType1;
+	
+	return AnimationType((UINT)AnimationType::HitFrontType1 + strengthIndex);
+}
+
+void PlayerParriedState::Enter(StateMachineComponent* pStateMachine, StateProperty property)
+{
+	pStateMachine->SetOwnerAnimation(AnimationType::Parried, 0.3f);
+}
+
+void PlayerParriedState::Leave(StateMachineComponent* pStateMachine)
+{
+}
+
+void PlayerParriedState::Update(StateMachineComponent* pStateMachine)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		pStateMachine->ChangeState(StateType::Idle, StateProperty());
+	}
+}
+
+void PlayerParriedState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
+	if (pStateMachine->CheckAnimationEnd()) {
+		pStateMachine->ChangeStateByInput(playerInput);
+	}
+}
+
+void PlayerParriedState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
+{
+	// TO DO : Implement to ignore Hit in specific period
+	if (event.eventType == GameEventType::Hit) {
+		event.strength = FATATL_HIT_STRENGTH;
+		pStateMachine->ChangeState(StateType::Hit, createHitStatePropertyFromGameEvent(event, false));
+	}
+}
+

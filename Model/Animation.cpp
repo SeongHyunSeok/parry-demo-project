@@ -74,13 +74,11 @@ void AnimationLayer::GetInterpolatedSRT(int boneFrameIndex, float timePosition, 
 AnimationSet::AnimationSet(float startTime, float endTime, std::string& name)
 	: startTime(startTime), endTime(endTime), name(name)
 {
-	length = endTime - startTime;
 }
 
 AnimationSet::AnimationSet(float startTime, float endTime, std::string&& name)
 	: startTime(startTime), endTime(endTime), name(move(name))
 {
-	length = endTime - startTime;
 }
 
 AnimationSet::~AnimationSet()
@@ -193,6 +191,11 @@ void AnimationSets::generateAnimationSet(const std::unordered_map<AnimationType,
 	}
 }
 
+void AnimationSets::SetAnimationSetInfos(std::unordered_map<AnimationType, AnimationSetInfo>&& infos)
+{
+	animationSetInfos = move(infos);
+}
+
 UINT AnimationSets::BoneCount()const
 {
 	return boneHierarchy.size();
@@ -223,7 +226,7 @@ void AnimationSets::GetFinalTransforms(AnimationPlayInfo& playInfo,
 	std::vector<BoneTransformInfo> toParentBoneTransformInfo(numBones);
 	auto clip = animationSets.find(playInfo.animationType);
 	clip->second->Interpolate(playInfo.timePosition,
-		toParentBoneTransformInfo, 
+		toParentBoneTransformInfo,
 		playInfo.curRootBoneRawTranslation,
 		1.0f - blendingWeight);
 
@@ -351,7 +354,7 @@ void AnimationController::SetAnimation(AnimationType type)
 		blendingWeight = 0.0f;
 		AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
 		playInfo.animationType = type;
-		playInfo.timePosition = 0.0f;
+		playInfo.timePosition = animationTracks[type].startPosition;
 		playInfo.startingAnimation = true;
 		playInfo.prevRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
 		playInfo.curRootBoneRawTranslation = { 0.0f, 0.0f,0.0f };
@@ -383,18 +386,22 @@ void AnimationController::SetTrackAnimationPlayType(AnimationType type, Animatio
 void AnimationController::AdvanceTime(float elapsedTime)
 {
 	UpdateTimePosition(elapsedTime);
+	
+	AnimationPlayInfo& curPlayInfo = animationPlayInfos[curAnimationPlayIndex];
 
-	animationPlayInfos[curAnimationPlayIndex].prevRootBoneRawTranslation
-		= animationPlayInfos[curAnimationPlayIndex].curRootBoneRawTranslation;
+	curPlayInfo.prevRootBoneRawTranslation
+		= curPlayInfo.curRootBoneRawTranslation;
 
 	blendingWeight = 0.0f;
 	UINT prevAniPlayInfoIndex = (curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount;
 	if (blending) {
 		animationPlayInfos[prevAniPlayInfoIndex].prevRootBoneRawTranslation
 			= animationPlayInfos[prevAniPlayInfoIndex].curRootBoneRawTranslation;
+		const AnimationTrack& track = animationTracks[curPlayInfo.animationType];
 
-		if (animationPlayInfos[curAnimationPlayIndex].timePosition <= gAnimationBlendingTime) {
-			blendingWeight = (1.0f - animationPlayInfos[curAnimationPlayIndex].timePosition / gAnimationBlendingTime);
+		if ((curPlayInfo.timePosition - track.startPosition) <= gAnimationBlendingTime) {
+	
+			blendingWeight = (gAnimationBlendingTime - (curPlayInfo.timePosition - track.startPosition)) / gAnimationBlendingTime;
 		}
 		else {
 			blending = false;
@@ -463,9 +470,27 @@ DirectX::XMFLOAT3 AnimationController::GetRootBoneTranslationDiff() {
 
 bool AnimationController::IsAnimationEnd()
 {
-	AnimationPlayInfo& info = animationPlayInfos[curAnimationPlayIndex];
+	const AnimationPlayInfo& info = animationPlayInfos[curAnimationPlayIndex];
 	if (animationTracks[info.animationType].endPosition <= info.timePosition)
 		return true;
+	return false;
+}
+
+bool AnimationController::IsAnimationStarting()
+{
+	const AnimationPlayInfo& info = animationPlayInfos[curAnimationPlayIndex];
+	return info.startingAnimation;
+}
+
+bool AnimationController::IsTimposInEffectiveFrame()
+{
+	const AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
+	const AnimationSetInfo& setInfo = animationSets->animationSetInfos[playInfo.animationType];
+
+	if (setInfo.effectiveStartTimePos <= playInfo.timePosition && playInfo.timePosition <= setInfo.effectiveEndTimePos) {
+		return true;
+	}
+
 	return false;
 }
 
