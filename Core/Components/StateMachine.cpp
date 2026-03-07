@@ -108,10 +108,10 @@ bool StateMachineComponent::CheckDistAndSetToFaceOpponent(Handle<GameObject> opp
 	auto pMyMesh = WORLD.GetComponent<MeshComponent>(GetOwner());
 	auto pOpponentMesh = WORLD.GetComponent<MeshComponent>(opponentHandle);
 
-	XMFLOAT2 myXZPosition = { pMyMesh->Translation.x, pMyMesh->Translation.z };
-	XMFLOAT2 oppnentXZPosition = { pOpponentMesh->Translation.x, pOpponentMesh->Translation.z };
+	XMVECTOR myXZPosition = { pMyMesh->Translation.x, pMyMesh->Translation.z };
+	XMVECTOR oppnentXZPosition = { pOpponentMesh->Translation.x, pOpponentMesh->Translation.z };
 
-	XMVECTOR distXZVec = XMLoadFloat2(&oppnentXZPosition) - XMLoadFloat2(&myXZPosition);
+	XMVECTOR distXZVec = oppnentXZPosition - myXZPosition;
 
 	float distXZ = 0.0f;
 	XMStoreFloat(&distXZ, XMVector2Length(distXZVec));
@@ -123,7 +123,7 @@ bool StateMachineComponent::CheckDistAndSetToFaceOpponent(Handle<GameObject> opp
 		XMVECTOR defaultDirVec = XMLoadFloat2(&defualtDir);
 		XMVECTOR dirVec = XMVector2Normalize(distXZVec);
 
-		float yAngle = XMVector2AngleBetweenNormalsEst(defaultDirVec, dirVec).m128_f32[0];
+		float yAngle = XMVector2AngleBetweenNormals(defaultDirVec, dirVec).m128_f32[0];
 
 		if (distXZVec.m128_f32[0] < 0.0f)
 		{

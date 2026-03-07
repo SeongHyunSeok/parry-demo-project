@@ -905,6 +905,11 @@ void GameFramework::Update(float dt)
 		if (pComPlayerStateMachine->IsInValidFrame() && comEnemyStateMachine.GetCurrentSatateType() == StateType::Idle
 			|| comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack) {
 			XMINT3 hitDir = { 0, 0, 1 };
+			if (pComPlayerMesh->Translation.z > pComEnemyMesh->Translation.z)
+			{
+				hitDir.z = -1;
+			}
+
 			GameEvent ge;
 			ge.eventType = GameEventType::Hit;
 			ge.dir = hitDir;
@@ -923,6 +928,23 @@ void GameFramework::Update(float dt)
 			enemyGe.dir = hitDir;
 			enemyGe.strength = FATATL_HIT_STRENGTH;
 			comEnemyStateMachine.HandleGameEvent(enemyGe);
+
+
+			XMFLOAT2 myXZPosition = { pComPlayerMesh->Translation.x, pComPlayerMesh->Translation.z };
+			XMFLOAT2 oppnentXZPosition = { pComEnemyMesh->Translation.x, pComEnemyMesh->Translation.z };
+			XMVECTOR distXZVec = XMLoadFloat2(&oppnentXZPosition) - XMLoadFloat2(&myXZPosition);
+			XMFLOAT2 defualtDir = XMFLOAT2(0, 1);
+			XMVECTOR defaultDirVec = XMLoadFloat2(&defualtDir);
+			XMVECTOR dirVec = XMVector2Normalize(distXZVec);
+
+			float yAngle = XMVector2AngleBetweenNormalsEst(defaultDirVec, dirVec).m128_f32[0];
+
+			if (distXZVec.m128_f32[0] < 0.0f)
+			{
+				yAngle = -yAngle;
+			}
+
+			pComPlayerMesh->Rotation.y = yAngle;
 		}
 	}
 	else if (distance < 3.0f &&
@@ -2124,9 +2146,9 @@ void GameFramework::LoadSkinnedModel()
 	animationSet->animationSets[AnimationType::Parried]->startTime = 0.7f;
 	animationSet->animationSets[AnimationType::Parried]->endTime = 1.2f;
 
+	XMVECTOR quat = MathHelper::QuaternionFromPithYawRoll(-2.0f, -0.1f, -0.5f);
 	animationSet->equipmentLocations[EquipmentType::OneHandSword] = EquipmentLocation(
-		50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
-		* XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
+		37, XMMatrixTranslation(-2.0f, -0.5f , -7.0f) * XMMatrixRotationQuaternion(quat)
 	);
 	animationSet->equipmentLocations[EquipmentType::Shield] = EquipmentLocation(
 		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
