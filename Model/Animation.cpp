@@ -125,37 +125,24 @@ void AnimationSet::Interpolate(
 		}
 		boneToParents[boneFrameIndex].scale = Vector3::Add(boneToParents[boneFrameIndex].scale, scaleResult, totalWeight);
 
-		if (totalWeight < 1.0f) {
-			XMVECTOR previousRotation = XMLoadFloat3(&boneToParents[boneFrameIndex].rotationEuler) / (1 - totalWeight);
-			XMVECTOR rotationResultVec = XMLoadFloat3(&rotationResult);
-			XMVECTOR rotationSigns = {
-				(0.0f <= rotationResult.x) - (rotationResult.x < 0.0f),
-				(0.0f <= rotationResult.y) - (rotationResult.y < 0.0f),
-				(0.0f <= rotationResult.z) - (rotationResult.z < 0.0f),
-			};
-
-			XMFLOAT3 rotationDiffs;
-			XMStoreFloat3(&rotationDiffs, previousRotation - rotationResultVec);
-			XMVECTOR diffChecks = {
-				((rotationDiffs.x < -MathHelper::Pi) || (rotationDiffs.x > MathHelper::Pi)),
-				((rotationDiffs.y < -MathHelper::Pi) || (rotationDiffs.y > MathHelper::Pi)),
-				((rotationDiffs.z < -MathHelper::Pi) || (rotationDiffs.z > MathHelper::Pi)),
-			};
-
-			XMStoreFloat3(
-				&rotationResult,
-				rotationResultVec + ((-rotationSigns) * diffChecks * 2 * MathHelper::Pi)
-			);
-		}
-
-		XMVECTOR quaternion = MathHelper::QuaternionFromPithYawRoll(
+		XMVECTOR rotation = MathHelper::QuaternionFromPithYawRoll(
 			rotationResult.x,
 			rotationResult.y,
 			rotationResult.z
 		);
-		XMStoreFloat4(&boneToParents[boneFrameIndex].rotationQuaternion, XMLoadFloat4(&boneToParents[boneFrameIndex].rotationQuaternion) + (quaternion * totalWeight));
-		
-		boneToParents[boneFrameIndex].rotationEuler = Vector3::Add(boneToParents[boneFrameIndex].rotationEuler, rotationResult, totalWeight);
+
+		auto& previousRotation = boneToParents[boneFrameIndex].rotationQuaternion;
+		bool needBlending = totalWeight < 1.0f;
+		bool isValidPrevQuat = previousRotation.x != 0 || previousRotation.y != 0 || previousRotation.z != 0 || previousRotation.w != 0;
+		if (needBlending && isValidPrevQuat) {
+			XMVECTOR previousRotationQuat = XMLoadFloat4(&previousRotation);
+			XMVECTOR result = XMQuaternionSlerp(previousRotationQuat, rotation, totalWeight);
+			XMStoreFloat4(&previousRotation, result);
+		}
+		else {
+			XMStoreFloat4(&previousRotation, rotation);
+		}
+
 		boneToParents[boneFrameIndex].translation = Vector3::Add(boneToParents[boneFrameIndex].translation, translationResult, totalWeight);
 
 		//XMMATRIX S = XMMatrixScaling(scaleResult.x, scaleResult.y, scaleResult.z);

@@ -308,9 +308,9 @@ namespace physics {
 			if (!pAttachedCam) continue;
 
 			const auto& xmParentPos = pParentMesh->Translation;
-			Vec3 parentPos{ xmParentPos.x, xmParentPos.y, xmParentPos.z };
+			Vec3 parentPos{ xmParentPos.x, xmParentPos.y + 4.f, xmParentPos.z };
 			Vec3 startPos{ parentPos };
-			startPos.SetY(startPos.GetY() + pAttachedCam->offset.GetY());
+			startPos.SetY(startPos.GetY() + 2.f);
 			const auto& xmParentRot = pParentMesh->Rotation;
 			const auto parentRot = Quat::sEulerAngles(Vec3{ xmParentRot.x, xmParentRot.y, xmParentRot.z });
 			Vec3 nextCamPos = parentPos + (parentRot * pAttachedCam->offset);
@@ -336,7 +336,7 @@ namespace physics {
 				}
 			}
 
-			cam.LookAt(ToDirectXF3(nextCamPos), ToDirectXF3(startPos), XMFLOAT3{ 0.f, 1.f, 0.f });
+			cam.LookAt(ToDirectXF3(nextCamPos), ToDirectXF3(parentPos), XMFLOAT3{ 0.f, 1.f, 0.f });
 		}
 	}
 
