@@ -1,6 +1,8 @@
 #include "StateMachine.h"
 #include "Equipment.h"
 #include "Animation.h"
+#include "Player.h"
+#include "Mesh.h"
 
 StateMachineComponent::StateMachineComponent(
 	Handle<GameObject> owner,
@@ -9,6 +11,7 @@ StateMachineComponent::StateMachineComponent(
 ) : Component{ owner } {
 	this->states = move(states);
 	currentState = this->states[initialState].get();
+	currentStateType = initialState;
 	currentState->Enter(this, StateProperty());
 }
 
@@ -22,7 +25,7 @@ void StateMachineComponent::HandleInput(const PlayerInupt& playerInput)
 	currentState->HandleInput(this, playerInput);
 }
 
-void StateMachineComponent::HandleEvent(GameEvent& event)
+void StateMachineComponent::HandleGameEvent(GameEvent& event)
 {
 	currentState->HandleEvent(this, event);
 }
@@ -53,6 +56,7 @@ void StateMachineComponent::ChangeState(StateType targetStateType, StateProperty
 {
 	currentState->Leave(this);
 	currentState = states[targetStateType].get();
+	currentStateType = targetStateType;
 	currentState->Enter(this, stateProperty);
 }
 
@@ -92,13 +96,59 @@ bool StateMachineComponent::IsInValidFrame()
 	}
 }
 
+bool StateMachineComponent::IsAnimationStarting()
+{
+	auto hOwner = GetOwner();
+	const auto comAnimation = WORLD.GetComponent<AnimationComponent>(hOwner);
+	return comAnimation && comAnimation->mSkinnedModelAnimationController->IsAnimationStarting();
+}
+
+bool StateMachineComponent::CheckDistAndSetToFaceOpponent(Handle<GameObject> opponentHandle, float distThreshold)
+{
+	auto pMyMesh = WORLD.GetComponent<MeshComponent>(GetOwner());
+	auto pOpponentMesh = WORLD.GetComponent<MeshComponent>(opponentHandle);
+
+	XMFLOAT2 myXZPosition = { pMyMesh->Translation.x, pMyMesh->Translation.z };
+	XMFLOAT2 oppnentXZPosition = { pOpponentMesh->Translation.x, pOpponentMesh->Translation.z };
+
+	XMVECTOR distXZVec = XMLoadFloat2(&oppnentXZPosition) - XMLoadFloat2(&myXZPosition);
+
+	float distXZ = 0.0f;
+	XMStoreFloat(&distXZ, XMVector2Length(distXZVec));
+
+	float distY = std::abs(pMyMesh->Translation.y - pOpponentMesh->Translation.y);
+
+	if (distXZ < distThreshold && distY < distThreshold) {
+		XMFLOAT2 defualtDir = XMFLOAT2(0, 1);
+		XMVECTOR defaultDirVec = XMLoadFloat2(&defualtDir);
+		XMVECTOR dirVec = XMVector2Normalize(distXZVec);
+
+		float yAngle = XMVector2AngleBetweenNormalsEst(defaultDirVec, dirVec).m128_f32[0];
+
+		if (distXZVec.m128_f32[0] < 0.0f)
+		{
+			yAngle = -yAngle;
+		}
+
+		pMyMesh->Rotation.y = yAngle;
+		return true;
+	}
+	return false;
+}
+
+StateType StateMachineComponent::GetCurrentSatateType()
+{
+	return currentStateType;
+}
+
+
 AnimationType PlayerIdleState::GetAnimationType(StateMachineComponent* pStateMachine) {
 	if (shield) {
 		auto hOwner = pStateMachine->GetOwner();
 		const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
 		if (comEquipmentOwner
-			&& comEquipmentOwner->equipments[(UINT)EquipmentTypes::Shield]) {
-			if (comEquipmentOwner->equipments[(UINT)EquipmentTypes::TwoHandSword]) {
+			&& comEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
+			if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
 				return AnimationType::TwoHandTemp;
 			}
 			else {
@@ -216,8 +266,8 @@ AnimationType PlayerWalkState::GetAnimationType(StateMachineComponent* pStateMac
 		auto hOwner = pStateMachine->GetOwner();
 		const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
 		if (comEquipmentOwner
-			&& comEquipmentOwner->equipments[(UINT)EquipmentTypes::Shield]) {
-			if (comEquipmentOwner->equipments[(UINT)EquipmentTypes::TwoHandSword]) {
+			&& comEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
+			if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
 				return AnimationType::TwoHandTemp;
 			}
 			else {
@@ -384,9 +434,7 @@ void PlayerAttackState::HandleInput(StateMachineComponent* pStateMachine, const 
 void PlayerAttackState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
 {
 	if (event.eventType == GameEventType::ActiveFatalAttack) {
-		auto hOwner = pStateMachine->GetOwner();
-		const auto comAnimation = WORLD.GetComponent<AnimationComponent>(hOwner);
-		if (comAnimation && comAnimation->mSkinnedModelAnimationController->IsAnimationStarting()) {
+		if (pStateMachine->IsAnimationStarting()) {
 			currentComboCount = 0;
 			doNextCombo = false;
 			fatalAttack = true;
@@ -409,14 +457,14 @@ AnimationType PlayerAttackState::GetAnimationType(StateMachineComponent* pStateM
 	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
 	if (comEquipmentOwner) {
 
-		if (comEquipmentOwner->equipments[(UINT)EquipmentTypes::TwoHandSword]) 
+		if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) 
 		{
 			if (fatalAttack) {
 				return AnimationType::TwoHandTemp;
 			}
 			return AnimationType::TwoHandTemp;
 		}
-		else if (comEquipmentOwner->equipments[(UINT)EquipmentTypes::OneHandSword]) 
+		else if (comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) 
 		{
 			if (fatalAttack) {
 				return AnimationType::OneHandBaseFatalAttack;
@@ -547,5 +595,69 @@ void PlayerParriedState::HandleEvent(StateMachineComponent* pStateMachine, GameE
 		event.strength = FATATL_HIT_STRENGTH;
 		pStateMachine->ChangeState(StateType::Hit, createHitStatePropertyFromGameEvent(event, false));
 	}
+}
+
+void EnemyIdleState::Enter(StateMachineComponent* pStateMachine, StateProperty stateProperty)
+{
+	pStateMachine->SetOwnerAnimation(AnimationType::Idle);
+}
+
+void EnemyIdleState::Leave(StateMachineComponent* pStateMachine)
+{
+}
+
+void EnemyIdleState::Update(StateMachineComponent* pStateMachine)
+{
+	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+
+	if (pStateMachine->CheckDistAndSetToFaceOpponent(player.GetOwner(), ATTACK_DISTANCE)) {
+		pStateMachine->ChangeState(StateType::Attack, StateProperty());
+	}
+}
+
+void EnemyIdleState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
+}
+
+void EnemyIdleState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
+{
+	if (event.eventType == GameEventType::Hit) {
+		pStateMachine->ChangeState(StateType::Hit, createHitStatePropertyFromGameEvent(event, false));
+	}
+}
+
+void EnemyAttackState::Update(StateMachineComponent* pStateMachine)
+{
+	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+	bool checkResult = pStateMachine->CheckDistAndSetToFaceOpponent(player.GetOwner(), ATTACK_DISTANCE);
+
+	if (pStateMachine->CheckAnimationEnd()) {
+		if (checkResult) {
+			doNextCombo = true;
+		}
+
+		fatalAttack = false;
+		if (doNextCombo) {
+			currentComboCount = (currentComboCount + 1) % MAX_COMBO_COUNT;
+			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
+
+			doNextCombo = false;
+		}
+		else {
+			pStateMachine->ChangeState(StateType::Idle, StateProperty());
+		}
+	}
+}
+
+void EnemyAttackState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
+}
+
+void EnemyHitState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
+}
+
+void EnemyParriedState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
+{
 }
 

@@ -103,7 +103,7 @@ public:
 	float GetClipEndTime()const;
 };
 
-enum class EquipmentTypes : UINT {
+enum class EquipmentType : UINT {
 	OneHandSword = 0,
 	Shield,
 	TwoHandSword,
@@ -217,7 +217,7 @@ public:
 	std::unordered_map<AnimationType, AnimationSetInfo> animationSetInfos;
 	std::vector<int> boneHierarchy;
 	std::vector<DirectX::XMFLOAT4X4> boneOffsets;
-	std::unordered_map<EquipmentTypes, EquipmentLocation> equipmentLocations;
+	std::unordered_map<EquipmentType, EquipmentLocation> equipmentLocations;
 	std::unordered_map<std::string, AnimationSet> rawAnimationSets;
 public:
 	void generateAnimationSet(const std::unordered_map<AnimationType, std::string>& mvTypeToName);

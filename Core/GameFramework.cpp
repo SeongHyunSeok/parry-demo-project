@@ -887,34 +887,61 @@ void GameFramework::Update(float dt)
 		XMStoreFloat3(&mRotatedLightDirections[i], lightDir);
 	}
 
-	// Update Objects
+	// Debug--------------
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+	auto pComPlayerStateMachine = WORLD.GetComponent<StateMachineComponent>(player.GetOwner());
+	auto pComPlayerMesh = WORLD.GetComponent<MeshComponent>(player.GetOwner());
 
-	// Debug
-	if (enableFatalAttackEvent) {
-		GameEvent ge;
-		ge.eventType = GameEventType::ActiveFatalAttack;
-		player.HandleGameEvent(ge);
-		enableFatalAttackEvent = false;
-	}
-	if (hitDir.z != 0 || hitDir.y != 0) {
-		GameEvent ge;
-		ge.eventType = GameEventType::Hit;
-		ge.dir = hitDir;
-		ge.strength = 0.2f;
-		player.HandleGameEvent(ge);
+	auto& comEnemyStateMachine = (WORLD.GetComponents<StateMachineComponent>())[1];
+	auto pComEnemyMesh = WORLD.GetComponent<MeshComponent>(comEnemyStateMachine.GetOwner());
 
-		hitDir = { 0, 0, 0 };
+	XMVECTOR distVec = XMLoadFloat3(&pComEnemyMesh->Translation) - XMLoadFloat3(&pComPlayerMesh->Translation);
+	float distance = 0.0f;
+	XMStoreFloat(&distance, XMVector3Length(distVec));
+
+	if (distance < 3.0f && 
+		pComPlayerStateMachine->GetCurrentSatateType() == StateType::Attack)
+	{
+		if (pComPlayerStateMachine->IsInValidFrame() && comEnemyStateMachine.GetCurrentSatateType() == StateType::Idle
+			|| comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack) {
+			XMINT3 hitDir = { 0, 0, 1 };
+			GameEvent ge;
+			ge.eventType = GameEventType::Hit;
+			ge.dir = hitDir;
+			ge.strength = 0.5f;
+			comEnemyStateMachine.HandleGameEvent(ge);
+		}
+		else if (comEnemyStateMachine.GetCurrentSatateType() == StateType::Parried
+			&& pComPlayerStateMachine->IsAnimationStarting()) {
+			GameEvent ge;
+			ge.eventType = GameEventType::ActiveFatalAttack;
+			pComPlayerStateMachine->HandleGameEvent(ge);
+			
+			XMINT3 hitDir = { 0, 0, 1 };
+			GameEvent enemyGe;
+			enemyGe.eventType = GameEventType::Hit;
+			enemyGe.dir = hitDir;
+			enemyGe.strength = FATATL_HIT_STRENGTH;
+			comEnemyStateMachine.HandleGameEvent(enemyGe);
+		}
 	}
-	if (enableParryEvent) {
-		GameEvent ge;
-		ge.eventType = GameEventType::Parried;
-		player.HandleGameEvent(ge);
-		enableParryEvent = false;
+	else if (distance < 3.0f &&
+		pComPlayerStateMachine->GetCurrentSatateType() == StateType::Parry
+		&& pComPlayerStateMachine->IsInValidFrame())
+	{
+		if (comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack
+			&& comEnemyStateMachine.IsInValidFrame()) {
+			GameEvent ge;
+			ge.eventType = GameEventType::Parried;
+			comEnemyStateMachine.HandleGameEvent(ge);
+		}
 	}
 	//-----------------------
 
-	player.Update(dt);
+	for (auto& it : WORLD.GetComponents<StateMachineComponent>())
+	{
+		it.Update();
+	}
 
 	AnimateMaterials(dt);
 	UpdateSkinnedCBs(dt);
@@ -1135,20 +1162,14 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 
 	player.Input(playerInput);
 
-	// Degug
-	if (inputManager.IsPressed('K'))
-		enableFatalAttackEvent = true;
-	if (inputManager.IsPressed(VK_UP))
-		hitDir.y += 1;
-	if (inputManager.IsPressed(VK_DOWN))
-		hitDir.y -= 1;
-	if (inputManager.IsPressed(VK_LEFT))
-		hitDir.z += 1;
-	if (inputManager.IsPressed(VK_RIGHT))
-		hitDir.z -= 1;
-	if (inputManager.IsPressed('L'))
-		enableParryEvent = true;
-	//----------------------------------
+	auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(player.GetOwner());
+	if (inputManager.IsPressed('Q')) {
+		pPlayerMesh->Rotation.y -= XMConvertToRadians(0.75);
+	}
+	if (inputManager.IsPressed('E')) {
+		pPlayerMesh->Rotation.y += XMConvertToRadians(0.75);
+	}
+	pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
 
 	//auto playerController = WORLD.GetComponent<physics::CharacterBody>(player.GetOwner());
 	//assert(playerController);
@@ -1171,7 +1192,6 @@ void GameFramework::HandleMouseInput(Camera& camera, float dt) {
 		auto& comPlayer = WORLD.GetComponents<PlayerComponent>().front();
 		auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(comPlayer.GetOwner());
 		pPlayerMesh->Rotation.y += XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
-		float sign = (pPlayerMesh->Rotation.y >= 0.f) - (pPlayerMesh->Rotation.y < 0.f);
 		pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
 	}
 }
@@ -1241,7 +1261,7 @@ void GameFramework::UpdateSkinnedCBs(float dt)
 			std::end(comAni.mSkinnedModelAnimationController->finalTransforms),
 			&skinnedConstants.BoneTransforms[0]);
 
-		currSkinnedCB->CopyData(0, skinnedConstants);
+		currSkinnedCB->CopyData(comAni.SkinnedCBIndex, skinnedConstants);
 
 		XMFLOAT3 rawTranslationDiff = comAni.mSkinnedModelAnimationController->GetRootBoneTranslationDiff();
 
@@ -1508,7 +1528,7 @@ void GameFramework::LoadTextures()
 		L"Textures/tile_nmap.dds",
 		L"Textures/white1x1.dds",
 		L"Textures/default_nmap.dds",
-		L"Textures/desertcube1024.dds"
+		L"Textures/snowcube1024.dds"
 	};
 
 	// Add skinned model textures to list so we can reference by name later.
@@ -1850,7 +1870,7 @@ void GameFramework::BuildShapeGeometry()
 {
 	GeometryGenerator geoGen;
 	GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
-	GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 30.0f, 60, 40);
+	GeometryGenerator::MeshData grid = geoGen.CreateGrid(100.0f, 100.0f, 120, 120);
 	GeometryGenerator::MeshData sphere = geoGen.CreateSphere(0.5f, 20, 20);
 	GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
 	GeometryGenerator::MeshData quad = geoGen.CreateQuad(0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
@@ -2104,11 +2124,11 @@ void GameFramework::LoadSkinnedModel()
 	animationSet->animationSets[AnimationType::Parried]->startTime = 0.7f;
 	animationSet->animationSets[AnimationType::Parried]->endTime = 1.2f;
 
-	animationSet->equipmentLocations[EquipmentTypes::OneHandSword] = EquipmentLocation(
+	animationSet->equipmentLocations[EquipmentType::OneHandSword] = EquipmentLocation(
 		50, XMMatrixRotationX(90.0f) * XMMatrixRotationY(70.0f) * XMMatrixRotationZ(70.0f)
 		* XMMatrixTranslation(-0.5f, -0.5f, -1.5f)
 	);
-	animationSet->equipmentLocations[EquipmentTypes::Shield] = EquipmentLocation(
+	animationSet->equipmentLocations[EquipmentType::Shield] = EquipmentLocation(
 		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
 		* XMMatrixTranslation(-3.0f, 10.0f, 0.0f)
 	);
@@ -2501,9 +2521,9 @@ void GameFramework::BuildFrameResources()
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
 			2, (UINT)WORLD.GetComponents<MeshComponent>().size(),
-			1,
+			(UINT)WORLD.GetComponents<AnimationComponent>().size(),
 			(UINT)mMaterials.size(),
-			(UINT)(WORLD.GetComponents<EquipmentOwnerComponent>().size() * (UINT)EquipmentTypes::Count)
+			(UINT)(WORLD.GetComponents<EquipmentOwnerComponent>().size() * (UINT)EquipmentType::Count)
 		));
 	}
 }
@@ -2576,6 +2596,16 @@ void GameFramework::BuildMaterials()
 	equipment->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
 	equipment->Roughness = 0.5f;
 	mMaterials["equipment"] = std::move(equipment);
+
+	auto equipment2 = std::make_unique<Material>();
+	equipment2->Name = "equipment2";
+	equipment2->MatCBIndex = matCBIndex++;
+	equipment2->DiffuseSrvHeapIndex = 4;
+	equipment2->NormalSrvHeapIndex = -1;
+	equipment2->DiffuseAlbedo = XMFLOAT4(0.5f, 0.f, 0.f, 1.0f);
+	equipment2->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
+	equipment2->Roughness = 0.5f;
+	mMaterials["equipment2"] = std::move(equipment2);
 }
 
 void GameFramework::BuildRenderItems()
@@ -2607,10 +2637,10 @@ void GameFramework::BuildRenderItems()
 	StaticCompoundShapeSettings compoundShapeSettings;
 	ShapeRefC pPlaneShape{ new BoxShape{ Vec3{50.f, 0.1f, 50.f} } };
 	compoundShapeSettings.AddShape(Vec3(0.f, -0.1f, 0.f), Quat::sIdentity(), pPlaneShape);
-	compoundShapeSettings.AddShape(Vec3(20.f, 0.f, 0.f), Quat::sRotation(Vec3::sAxisZ(), MathHelper::Pi / 2.f), pPlaneShape);
-	compoundShapeSettings.AddShape(Vec3(-20.f, 0.f, 0.f), Quat::sRotation(-Vec3::sAxisZ(), MathHelper::Pi / 2.f), pPlaneShape);
-	compoundShapeSettings.AddShape(Vec3(0.f, 0.f, 20.f), Quat::sRotation(-Vec3::sAxisX(), MathHelper::Pi / 2.f), pPlaneShape);
-	compoundShapeSettings.AddShape(Vec3(0.f, 0.f, -20.f), Quat::sRotation(Vec3::sAxisX(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(50.f, 0.f, 0.f), Quat::sRotation(Vec3::sAxisZ(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(-50.f, 0.f, 0.f), Quat::sRotation(-Vec3::sAxisZ(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(0.f, 0.f, 50.f), Quat::sRotation(-Vec3::sAxisX(), MathHelper::Pi / 2.f), pPlaneShape);
+	compoundShapeSettings.AddShape(Vec3(0.f, 0.f, -50.f), Quat::sRotation(Vec3::sAxisX(), MathHelper::Pi / 2.f), pPlaneShape);
 	StaticBody comQuadBody{ hQuadObj, bodyInterface, compoundShapeSettings.Create().Get(), Vec3::sZero(), Quat::sIdentity() };
 	WORLD.AttachComponent(hQuadObj, std::move(comQuadBody));
 
@@ -2679,83 +2709,29 @@ void GameFramework::BuildRenderItems()
 		WORLD.AttachComponent(hRightSphereObj, NonAnimatedComponent(hRightSphereObj));
 	}
 
-	auto hPlayerOneHandSwordObj = WORLD.AddObject();
-	MeshComponent comPlayerOneHandSwordMesh(hPlayerOneHandSwordObj, objCBIndexCounter++,
-		XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
-		XMMatrixIdentity(),
-		{ mGeometries["equipmentGeo"].get() }, { "OneHandSword0" }, { mMaterials["equipment"].get() }
-	);
-	auto comOneHandSwordEquipment = EquipmentComponent(hPlayerOneHandSwordObj);
-	comOneHandSwordEquipment.equipmentType = EquipmentTypes::OneHandSword;
-	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comPlayerOneHandSwordMesh));
-	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comOneHandSwordEquipment));
-
-	auto hPlayerShieldObj = WORLD.AddObject();
-	MeshComponent comPlayerShieldMesh(hPlayerShieldObj, objCBIndexCounter++,
-		XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
-		XMMatrixIdentity(),
-		{ mGeometries["equipmentGeo"].get() }, { "Shield0" }, { mMaterials["equipment"].get() }
-	);
-	auto comShieldEquipment = EquipmentComponent(hPlayerShieldObj);
-	comShieldEquipment.equipmentType = EquipmentTypes::Shield;
-	WORLD.AttachComponent(hPlayerShieldObj, std::move(comPlayerShieldMesh));
-	WORLD.AttachComponent(hPlayerShieldObj, std::move(comShieldEquipment));
-
 	UINT skinnedCBIndexCounter = 0;
 	UINT equippedCBIndexCounter = 0;
 
+	// Build Player
 	auto hPlayerObj = WORLD.AddObject();
 	auto pPlayerObj = WORLD.GetGameObject(hPlayerObj);
 	pPlayerObj->AddChild(WORLD, GetMainCamera().GetOwner());
 	WORLD.AttachComponent(hPlayerObj, PlayerComponent(hPlayerObj));
-
-	MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
-	int subMeshCounts = skinnedModelGeo->DrawArgs.size();
-	std::vector<MeshGeometry*> geometries(subMeshCounts, skinnedModelGeo);
-	std::vector<std::string> subMeshNames;
-	std::vector<Material*> materials;
-	int idx = 0;
-	for (const auto& [subMeshName, subMesh] : skinnedModelGeo->DrawArgs) {
-		subMeshNames.push_back(subMeshName);
-		materials.push_back(mMaterials[mSkinnedMats[idx].Name].get());
-	}
-
-	XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
-	XMFLOAT3 modelRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f); //MathHelper::Pi
-	XMFLOAT3 modelOffset = XMFLOAT3(0.0f, 0.f, -5.0f);
-
-	MeshComponent comPlayerMesh(hPlayerObj, objCBIndexCounter++,
-		modelScale, modelRot, modelOffset, XMMatrixIdentity(),
-		geometries, subMeshNames, materials
-	);
-	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerMesh));
-
-	AnimationComponent comPlayerAnimation{ hPlayerObj };
-	comPlayerAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
-	comPlayerAnimation.mSkinnedModelAnimationController =
-		std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
-	//comPlayerAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
-	EquipmentOwnerComponent comPlayerEquipmentOwner{ hPlayerObj, equippedCBIndexCounter };
-	comPlayerEquipmentOwner.equipments[(UINT)EquipmentTypes::OneHandSword] = hPlayerOneHandSwordObj;
-	comPlayerEquipmentOwner.equipments[(UINT)EquipmentTypes::Shield] = hPlayerShieldObj;
-	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerAnimation));
-	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerEquipmentOwner));
-
-	Ref<CharacterVirtualSettings> settings = new CharacterVirtualSettings();
-	float characterHeight = 5.0f;
-	float characterRadius = 0.3f;
-	RotatedTranslatedShapeSettings shapeSetting{ Vec3{0.f, 0.5f * characterHeight + characterRadius, 0.f}, Quat::sIdentity(), new CapsuleShape(0.5f * characterHeight, characterRadius) };
-	settings->mShape = shapeSetting.Create().Get();
-	settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
-	physics::CharacterBody comPlayerController{
+	
+	XMFLOAT3 playerOffset = XMFLOAT3(0.0f, 0.f, -5.0f);
+	XMFLOAT3 playerRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
+	BuildHumanoidItem(
 		hPlayerObj,
-		*settings,
-		Vec3(0.f, 10.f, 0.f),
-		Quat::sIdentity(),
-		PHYSICS_SYSTEM,
-		std::make_unique<MyCharacterContactListener>()
-	};
-	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerController));
+		skinnedCBIndexCounter,
+		equippedCBIndexCounter,
+		mMaterials[mSkinnedMats[0].Name].get(),
+		playerOffset,
+		playerRot,
+		objCBIndexCounter,
+		mMaterials["equipment"].get(),
+		true,
+		true
+	);
 
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> playerStates;
 	playerStates[StateType::Idle] = std::make_unique<PlayerIdleState>();
@@ -2768,16 +2744,144 @@ void GameFramework::BuildRenderItems()
 	StateMachineComponent comPlayerSM{ hPlayerObj, move(playerStates), StateType::Idle };
 	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerSM));
 
+	// Build Enemy
+	auto hEnemyObj = WORLD.AddObject();
+	XMFLOAT3 ememyOffset = XMFLOAT3(0.0f, 0.f, 5.0f);
+	XMFLOAT3 ememyRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
+	BuildHumanoidItem(
+		hEnemyObj,
+		skinnedCBIndexCounter,
+		equippedCBIndexCounter,
+		mMaterials["mirror0"].get(),
+		ememyOffset,
+		ememyRot,
+		objCBIndexCounter,
+		mMaterials["equipment2"].get(),
+		true,
+		false
+	);
+	std::unordered_map<StateType, std::unique_ptr<CharacterState>> enemyStates;
+	enemyStates[StateType::Idle] = std::make_unique<EnemyIdleState>();
+	enemyStates[StateType::Attack] = std::make_unique<EnemyAttackState>();
+	enemyStates[StateType::Hit] = std::make_unique<EnemyHitState>();
+	enemyStates[StateType::Parried] = std::make_unique<EnemyParriedState>();
+	StateMachineComponent comEnemySM{ hEnemyObj, move(enemyStates), StateType::Idle };
+	WORLD.AttachComponent(hEnemyObj, std::move(comEnemySM));
 
-	auto comEquipped = EquippedComponent(hPlayerOneHandSwordObj);
-	comEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::OneHandSword];
-	comEquipped.owner = hPlayerObj;
-	WORLD.AttachComponent(hPlayerOneHandSwordObj, std::move(comEquipped));
 
-	auto comShieldEquipped = EquippedComponent(hPlayerShieldObj);
-	comShieldEquipped.EquippedCBIndex = comPlayerEquipmentOwner.equippedCBIndices[(UINT)EquipmentTypes::Shield];
-	comShieldEquipped.owner = hPlayerObj;
-	WORLD.AttachComponent(hPlayerShieldObj, std::move(comShieldEquipped));
+}
+
+void GameFramework::BuildHumanoidItem(
+	Handle<GameObject> handle,
+	UINT& skinnedCBIndexCounter,
+	UINT& equippedCBIndexCounter,
+	Material* pMaterial,
+	XMFLOAT3& modelOffset,
+	XMFLOAT3& modelRotation,
+	UINT& objCBIndexCounter,
+	Material* pEquipmentMaterial,
+	bool hasOneHandSword,
+	bool hasShield
+) {
+	using namespace physics;
+	using namespace JPH;
+
+	MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
+	int subMeshCounts = skinnedModelGeo->DrawArgs.size();
+	std::vector<MeshGeometry*> geometries(subMeshCounts, skinnedModelGeo);
+	std::vector<std::string> subMeshNames;
+	std::vector<Material*> materials;
+	int idx = 0;
+	for (const auto& [subMeshName, subMesh] : skinnedModelGeo->DrawArgs) {
+		subMeshNames.push_back(subMeshName);
+		materials.push_back(pMaterial);
+	}
+
+	XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
+	MeshComponent comMesh(handle, objCBIndexCounter++,
+		modelScale, modelRotation, modelOffset, XMMatrixIdentity(),
+		geometries, subMeshNames, materials
+	);
+	WORLD.AttachComponent(handle, std::move(comMesh));
+
+	AnimationComponent comAnimation{ handle };
+	comAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
+	comAnimation.mSkinnedModelAnimationController =
+		std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
+	//comAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
+	WORLD.AttachComponent(handle, std::move(comAnimation));
+
+	Ref<CharacterVirtualSettings> settings = new CharacterVirtualSettings();
+	float characterHeight = 5.0f;
+	float characterRadius = 0.3f;
+	RotatedTranslatedShapeSettings shapeSetting{ Vec3{0.f, 0.5f * characterHeight + characterRadius, 0.f}, Quat::sIdentity(), new CapsuleShape(0.5f * characterHeight, characterRadius) };
+	settings->mShape = shapeSetting.Create().Get();
+	settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
+	physics::CharacterBody comPlayerController{
+		handle,
+		*settings,
+		Vec3(modelOffset.x, 10.f, modelOffset.z),
+		Quat::sIdentity(),
+		PHYSICS_SYSTEM,
+		std::make_unique<MyCharacterContactListener>()
+	};
+	WORLD.AttachComponent(handle, std::move(comPlayerController));
+
+	EquipmentOwnerComponent comEquipmentOwner{ handle, equippedCBIndexCounter };
+
+	if (hasOneHandSword)
+	{
+		BuildEquipmentItem(
+			handle,
+			objCBIndexCounter,
+			comEquipmentOwner,
+			EquipmentType::OneHandSword,
+			pEquipmentMaterial
+		);
+	}
+	if (hasShield)
+	{
+		BuildEquipmentItem(
+			handle,
+			objCBIndexCounter,
+			comEquipmentOwner,
+			EquipmentType::Shield,
+			pEquipmentMaterial
+		);
+	}
+
+	WORLD.AttachComponent(handle, std::move(comEquipmentOwner));
+}
+
+void GameFramework::BuildEquipmentItem(
+	Handle<GameObject> ownerHandle,
+	UINT& objCBIndexCounter,
+	EquipmentOwnerComponent& comEquipmentOwner,
+	EquipmentType equipmentType,
+	Material* pMaterial
+) {
+	const char* subMeshNames[(UINT)EquipmentType::Count] = {
+		"OneHandSword0",
+		"Shield0",
+		"TwoHandSword0"
+	};
+	auto hEquipmentObj = WORLD.AddObject();
+	MeshComponent comMesh(hEquipmentObj, objCBIndexCounter++,
+		XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
+		XMMatrixIdentity(),
+		{ mGeometries["equipmentGeo"].get() }, { subMeshNames[(UINT)equipmentType] }, { pMaterial  }
+	);
+	auto comEquipment = EquipmentComponent(hEquipmentObj);
+	comEquipment.equipmentType = equipmentType;
+	WORLD.AttachComponent(hEquipmentObj, std::move(comMesh));
+	WORLD.AttachComponent(hEquipmentObj, std::move(comEquipment));
+
+	auto comEquipped = EquippedComponent(hEquipmentObj); // for rendering
+	comEquipped.EquippedCBIndex = comEquipmentOwner.equippedCBIndices[(UINT)equipmentType];
+	comEquipped.owner = ownerHandle;
+	WORLD.AttachComponent(hEquipmentObj, std::move(comEquipped));
+
+	comEquipmentOwner.equipments[(UINT)equipmentType] = hEquipmentObj;
 }
 
 void GameFramework::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems)

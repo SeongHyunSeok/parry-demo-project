@@ -112,6 +112,25 @@ private:
     void BuildFrameResources();
     void BuildMaterials();
     void BuildRenderItems();
+    void BuildHumanoidItem(
+        Handle<GameObject> handle,
+        UINT& skinnedCBIndexCounter,
+        UINT& equippedCBIndexCounter,
+        Material* pMaterial,
+        XMFLOAT3& modelOffset,
+        XMFLOAT3& modelRotation,
+        UINT& objCBIndexCounter,
+        Material* pEquipmentMaterial,
+        bool hasOneHandSword,
+        bool hasShield
+    );
+    void BuildEquipmentItem(
+        Handle<GameObject> ownerHandle,
+        UINT& objCBIndexCounter,
+        EquipmentOwnerComponent& comEquipmentOwner,
+        EquipmentType equipmentType,
+        Material* pMaterial
+    );
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<NonAnimatedComponent>& ritems);
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems);
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<EquippedComponent>& ritems);
@@ -245,10 +264,4 @@ private:
 
     // input
     POINT mLastMousePos;
-
-
-    // Debug
-    bool enableFatalAttackEvent = false;
-    XMINT3 hitDir = { 0, 0, 0 };
-    bool enableParryEvent = false;
 };

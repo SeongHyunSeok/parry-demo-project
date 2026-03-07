@@ -42,7 +42,7 @@ public:
 
 	void Update();
 	void HandleInput(const PlayerInupt& playerInput);
-	void HandleEvent(GameEvent& event);
+	void HandleGameEvent(GameEvent& event);
 
 	void ChangeStateByInput(const PlayerInupt& playerInput);
 	void ChangeState(StateType targetStateType, StateProperty property);
@@ -50,9 +50,13 @@ public:
 	void SetOwnerAnimation(AnimationType animationType, float speed);
 	bool CheckAnimationEnd();
 	bool IsInValidFrame();
+	bool IsAnimationStarting();
+	bool CheckDistAndSetToFaceOpponent(Handle<GameObject> opponentHandle, float distThreshold);
+	StateType GetCurrentSatateType();
 private:
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> states;
 	CharacterState* currentState = nullptr;
+	StateType currentStateType = StateType::Idle;
 };
 
 class CharacterState
@@ -136,7 +140,7 @@ public:
 	void Update(StateMachineComponent* pStateMachine) override;
 	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
-private:
+protected:
 	const unsigned int MAX_COMBO_COUNT = 8;
 	unsigned int currentComboCount = 0;
 	bool doNextCombo = false;
@@ -183,4 +187,39 @@ public:
 	void Update(StateMachineComponent* pStateMachine) override;
 	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
+};
+
+const float ATTACK_DISTANCE = 10.0f;
+
+class EnemyIdleState : public CharacterState
+{
+public:
+	EnemyIdleState() {}
+	void Enter(StateMachineComponent* pStateMachine, StateProperty property) override;
+	void Leave(StateMachineComponent* pStateMachine) override;
+	void Update(StateMachineComponent* pStateMachine) override;
+	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
+	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
+};
+
+class EnemyAttackState : public PlayerAttackState
+{
+public:
+	EnemyAttackState() {}
+	void Update(StateMachineComponent* pStateMachine) override;
+	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
+};
+
+class EnemyHitState : public PlayerHitState
+{
+public:
+	EnemyHitState() {}
+	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
+};
+
+class EnemyParriedState : public PlayerParriedState
+{
+public:
+	EnemyParriedState() {}
+	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
 };

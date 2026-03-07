@@ -18,18 +18,4 @@ public:
             pComStateMachine->HandleInput(playerInput);
         }
     }
-
-    void Update(float dt) {
-        auto pComStateMachine = WORLD.GetComponent<StateMachineComponent>(owner);
-        if (pComStateMachine) {
-            pComStateMachine->Update();
-        }
-    }
-
-    void HandleGameEvent(GameEvent& event) {
-        auto pComStateMachine = WORLD.GetComponent<StateMachineComponent>(owner);
-        if (pComStateMachine) {
-            pComStateMachine->HandleEvent(event);
-        }
-    }
 };

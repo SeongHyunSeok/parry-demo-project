@@ -9,7 +9,7 @@ struct EquipmentComponent : public Component
     EquipmentComponent(const EquipmentComponent& rhs) = delete;
     EquipmentComponent(EquipmentComponent&&) = default;
 
-    EquipmentTypes equipmentType;
+    EquipmentType equipmentType;
 };
 
 struct EquipmentOwnerComponent : public Component
@@ -17,17 +17,17 @@ struct EquipmentOwnerComponent : public Component
     EquipmentOwnerComponent(Handle<GameObject> owner, UINT& equippedCBIndexCounter) 
         : Component{ owner } 
     {
-        for (int i = 0; i < (UINT)EquipmentTypes::Count; ++i) {
+        for (int i = 0; i < (UINT)EquipmentType::Count; ++i) {
             equippedCBIndices[i] = equippedCBIndexCounter++;
         }
 
-        for (int i = 0; i < (UINT)EquipmentTypes::Count; ++i) {
+        for (int i = 0; i < (UINT)EquipmentType::Count; ++i) {
             equipments[i] = std::nullopt;
         }
     };
     EquipmentOwnerComponent(const EquipmentOwnerComponent& rhs) = delete;
     EquipmentOwnerComponent(EquipmentOwnerComponent&&) = default;
 
-    UINT equippedCBIndices[(UINT)EquipmentTypes::Count];
-    std::optional<Handle<GameObject>> equipments[(UINT)EquipmentTypes::Count];
+    UINT equippedCBIndices[(UINT)EquipmentType::Count];
+    std::optional<Handle<GameObject>> equipments[(UINT)EquipmentType::Count];
 };
