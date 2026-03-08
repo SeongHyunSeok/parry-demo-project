@@ -3,10 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="JoltPhysics/Build/VS2026_CL/Jolt.vcxproj" Id="291ce523-6e1a-37f4-b5ba-10f8aca8e884">
-    <Platform Project="x64" />
-  </Project>
-  <Project Path="ParryDemoProject.vcxproj" Id="3e7f397f-acb7-43df-a66f-0d6512d526c4">
-    <BuildDependency Project="JoltPhysics/Build/VS2026_CL/Jolt.vcxproj" />
-  </Project>
+  <Project Path="ParryDemoProject.vcxproj" Id="3e7f397f-acb7-43df-a66f-0d6512d526c4" />
 </Solution>

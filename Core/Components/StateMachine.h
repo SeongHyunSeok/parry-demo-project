@@ -3,7 +3,7 @@
 #include "../component.h"
 #include "../GameEvent.h"
 #include "../world.h"
-#include "../Model/Animation.h"
+#include "../../Model/Animation.h"
 
 enum class StateType : unsigned int
 {
