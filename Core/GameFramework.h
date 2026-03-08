@@ -24,6 +24,10 @@
 #include "../Model/Animation.h"
 #include "../Model/ModelLoader.h"
 
+#include "physics.h"
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+
 // Link necessary d3d12 libraries.
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -38,230 +42,316 @@ class GameFramework
 {
 protected:
 
-    GameFramework(HINSTANCE hInstance);
-    GameFramework(const GameFramework& rhs) = delete;
-    GameFramework& operator=(const GameFramework& rhs) = delete;
-    virtual ~GameFramework();
+	GameFramework(HINSTANCE hInstance);
+	GameFramework(const GameFramework& rhs) = delete;
+	GameFramework& operator=(const GameFramework& rhs) = delete;
+	virtual ~GameFramework();
 
 public:
 
-    static GameFramework* GetApp();
+	static GameFramework* GetApp();
 
-    HINSTANCE AppInst()const;
-    HWND      MainWnd()const;
-    float     AspectRatio()const;
+	HINSTANCE AppInst()const;
+	HWND      MainWnd()const;
+	float     AspectRatio()const;
 
-    bool Get4xMsaaState()const;
-    void Set4xMsaaState(bool value);
+	bool Get4xMsaaState()const;
+	void Set4xMsaaState(bool value);
 
-    int Run();
+	int Run();
 
-    virtual bool Initialize();
-    virtual LRESULT MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-protected:
-    virtual void CreateRtvAndDsvDescriptorHeaps();
-    virtual void OnResize();
-    virtual void Update(float dt);
-    virtual void Draw(float dt);
-
-    // Convenience overrides for handling mouse input.
-    virtual void OnMouseDown(WPARAM btnState, int x, int y);
-    virtual void OnMouseUp(WPARAM btnState, int x, int y);
+	virtual bool Initialize();
+	virtual LRESULT MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 protected:
+	virtual void CreateRtvAndDsvDescriptorHeaps();
+	virtual void OnResize();
+	virtual void Update(float dt);
+	virtual void Draw(float dt);
 
-    bool InitMainWindow();
-    bool InitDirect3D();
-    void CreateCommandObjects();
-    void CreateSwapChain();
+	// Convenience overrides for handling mouse input.
+	virtual void OnMouseDown(WPARAM btnState, int x, int y);
+	virtual void OnMouseUp(WPARAM btnState, int x, int y);
 
-    void FlushCommandQueue();
+protected:
 
-    ID3D12Resource* CurrentBackBuffer()const;
-    D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView()const;
-    D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView()const;
+	bool InitMainWindow();
+	bool InitDirect3D();
+	void CreateCommandObjects();
+	void CreateSwapChain();
 
-    void CalculateFrameStats();
+	void FlushCommandQueue();
 
-    void LogAdapters();
-    void LogAdapterOutputs(IDXGIAdapter* adapter);
-    void LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format);
+	ID3D12Resource* CurrentBackBuffer()const;
+	D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView()const;
+	D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView()const;
+
+	void CalculateFrameStats();
+
+	void LogAdapters();
+	void LogAdapterOutputs(IDXGIAdapter* adapter);
+	void LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format);
 
 private:
-    void HandleKeyboardInput(Camera& camera, float dt);
-    void HandleMouseInput(Camera& camera, float dt);
-    void AnimateMaterials(float dt);
-    void UpdateObjectCBs(float dt);
-    void UpdateSkinnedCBs(float dt);
-    void UpdateMaterialBuffer(float dt);
-    void UpdateShadowTransform(float dt);
-    void UpdateMainPassCB(float dt);
-    void UpdateShadowPassCB(float dt);
-    void UpdateSsaoCB(float dt);
+	void HandleKeyboardInput(Camera& camera, float dt);
+	void HandleMouseInput(Camera& camera, float dt);
+	void AnimateMaterials(float dt);
+	void UpdateObjectCBs(float dt);
+	void UpdateSkinnedCBs(float dt);
+	void UpdateMaterialBuffer(float dt);
+	void UpdateShadowTransform(float dt);
+	void UpdateMainPassCB(float dt);
+	void UpdateShadowPassCB(float dt);
+	void UpdateSsaoCB(float dt);
 
-    void LoadTextures();
-    void BuildRootSignature();
-    void BuildSsaoRootSignature();
-    void BuildDescriptorHeaps();
-    void BuildShadersAndInputLayout();
-    void BuildShapeGeometry();
-    void BuildFbxModelGeometry();
-    void LoadSkinnedModel();
-    void BuildPSOs();
-    void BuildFrameResources();
-    void BuildMaterials();
-    void BuildRenderItems();
-    void BuildHumanoidItem(
-        Handle<GameObject> handle,
-        UINT& skinnedCBIndexCounter,
-        UINT& equippedCBIndexCounter,
-        Material* pMaterial,
-        XMFLOAT3& modelOffset,
-        XMFLOAT3& modelRotation,
-        UINT& objCBIndexCounter,
-        Material* pEquipmentMaterial,
-        bool hasOneHandSword,
-        bool hasShield
-    );
-    void BuildEquipmentItem(
-        Handle<GameObject> ownerHandle,
-        UINT& objCBIndexCounter,
-        EquipmentOwnerComponent& comEquipmentOwner,
-        EquipmentType equipmentType,
-        Material* pMaterial
-    );
-    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<NonAnimatedComponent>& ritems);
-    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems);
-    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<EquippedComponent>& ritems);
-    void DrawRenderItem(ID3D12GraphicsCommandList* cmdList, const MeshComponent const * ritem);
-    void DrawSceneToShadowMap();
-    void DrawNormalsAndDepth();
+	void LoadTextures();
+	void BuildRootSignature();
+	void BuildSsaoRootSignature();
+	void BuildDescriptorHeaps();
+	void BuildShadersAndInputLayout();
+	void BuildShapeGeometry();
+	void BuildFbxModelGeometry();
+	void LoadSkinnedModel();
+	void BuildPSOs();
+	void BuildFrameResources();
+	void BuildMaterials();
+	void BuildRenderItems();
+	template <class T = physics::SimpleCharacterBody>
+	void BuildHumanoidItem(
+		Handle<GameObject> handle,
+		UINT& skinnedCBIndexCounter,
+		UINT& equippedCBIndexCounter,
+		Material* pMaterial,
+		XMFLOAT3& modelOffset,
+		XMFLOAT3& modelRotation,
+		UINT& objCBIndexCounter,
+		Material* pEquipmentMaterial,
+		bool hasOneHandSword,
+		bool hasShield
+	) {
+		using namespace physics;
+		using namespace JPH;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE GetCpuSrv(int index)const;
-    CD3DX12_GPU_DESCRIPTOR_HANDLE GetGpuSrv(int index)const;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE GetDsv(int index)const;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE GetRtv(int index)const;
+		MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
+		int subMeshCounts = skinnedModelGeo->DrawArgs.size();
+		std::vector<MeshGeometry*> geometries(subMeshCounts, skinnedModelGeo);
+		std::vector<std::string> subMeshNames;
+		std::vector<Material*> materials;
+		int idx = 0;
+		for (const auto& [subMeshName, subMesh] : skinnedModelGeo->DrawArgs) {
+			subMeshNames.push_back(subMeshName);
+			materials.push_back(pMaterial);
+		}
 
-    std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> GetStaticSamplers();
+		XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
+		MeshComponent comMesh(handle, objCBIndexCounter++,
+			modelScale, modelRotation, modelOffset, XMMatrixIdentity(),
+			geometries, subMeshNames, materials
+		);
+		WORLD.AttachComponent(handle, std::move(comMesh));
+
+		AnimationComponent comAnimation{ handle };
+		comAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
+		comAnimation.mSkinnedModelAnimationController =
+			std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
+		//comAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
+		WORLD.AttachComponent(handle, std::move(comAnimation));
+
+		float characterHeight = 4.5f;
+		float characterRadius = 0.8f;
+		RotatedTranslatedShapeSettings shapeSetting{ Vec3{0.f, 0.5f * characterHeight + characterRadius, 0.f}, Quat::sIdentity(), new CapsuleShape(0.5f * characterHeight, characterRadius) };
+		if constexpr (std::is_same_v<T, CharacterBody>) {
+			Ref<CharacterBody::Settings> settings = new CharacterBody::Settings();
+			settings->mShape = shapeSetting.Create().Get();
+			settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
+			CharacterBody comPlayerController{
+				handle,
+				*settings,
+				Vec3(modelOffset.x, 10.f, modelOffset.z),
+				Quat::sIdentity(),
+				PHYSICS_SYSTEM,
+				std::make_unique<MyCharacterContactListener>()
+			};
+			WORLD.AttachComponent(handle, std::move(comPlayerController));
+		}
+		else if constexpr (std::is_same_v<T, SimpleCharacterBody>) {
+			Ref<SimpleCharacterBody::Settings> settings = new SimpleCharacterBody::Settings();
+			settings->mLayer = Layers::MOVING;
+			settings->mShape = shapeSetting.Create().Get();
+			settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
+			SimpleCharacterBody comAIController{
+				handle,
+				*settings,
+				Vec3(modelOffset.x, 10.f, modelOffset.z),
+				Quat::sIdentity(),
+				PHYSICS_SYSTEM
+			};
+			WORLD.AttachComponent(handle, std::move(comAIController));
+		}
+
+		EquipmentOwnerComponent comEquipmentOwner{ handle, equippedCBIndexCounter };
+
+		if (hasOneHandSword)
+		{
+			BuildEquipmentItem(
+				handle,
+				objCBIndexCounter,
+				comEquipmentOwner,
+				EquipmentType::OneHandSword,
+				pEquipmentMaterial
+			);
+		}
+		if (hasShield)
+		{
+			BuildEquipmentItem(
+				handle,
+				objCBIndexCounter,
+				comEquipmentOwner,
+				EquipmentType::Shield,
+				pEquipmentMaterial
+			);
+		}
+
+		WORLD.AttachComponent(handle, std::move(comEquipmentOwner));
+	}
+	void BuildEquipmentItem(
+		Handle<GameObject> ownerHandle,
+		UINT& objCBIndexCounter,
+		EquipmentOwnerComponent& comEquipmentOwner,
+		EquipmentType equipmentType,
+		Material* pMaterial
+	);
+	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<NonAnimatedComponent>& ritems);
+	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems);
+	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<EquippedComponent>& ritems);
+	void DrawRenderItem(ID3D12GraphicsCommandList* cmdList, const MeshComponent const* ritem);
+	void DrawSceneToShadowMap();
+	void DrawNormalsAndDepth();
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetCpuSrv(int index)const;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE GetGpuSrv(int index)const;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetDsv(int index)const;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetRtv(int index)const;
+
+	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> GetStaticSamplers();
 protected:
 
-    static GameFramework* mApp;
+	static GameFramework* mApp;
 
-    HINSTANCE mhAppInst = nullptr; // application instance handle
-    HWND      mhMainWnd = nullptr; // main window handle
-    bool      mAppPaused = false;  // is the application paused?
-    bool      mMinimized = false;  // is the application minimized?
-    bool      mMaximized = false;  // is the application maximized?
-    bool      mResizing = false;   // are the resize bars being dragged?
-    bool      mFullscreenState = false;// fullscreen enabled
-    
+	HINSTANCE mhAppInst = nullptr; // application instance handle
+	HWND      mhMainWnd = nullptr; // main window handle
+	bool      mAppPaused = false;  // is the application paused?
+	bool      mMinimized = false;  // is the application minimized?
+	bool      mMaximized = false;  // is the application maximized?
+	bool      mResizing = false;   // are the resize bars being dragged?
+	bool      mFullscreenState = false;// fullscreen enabled
 
 
-    TimerView mTimerView{ GLOBAL_TIMER };
 
-    // Set true to use 4X MSAA (�4.1.8).  The default is false.
-    bool      m4xMsaaState = false;    // 4X MSAA enabled
-    UINT      m4xMsaaQuality = 0;      // quality level of 4X MSAA
+	TimerView mTimerView{ GLOBAL_TIMER };
 
-    Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
-    Microsoft::WRL::ComPtr<IDXGISwapChain1> mSwapChain;
-    Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
+	// Set true to use 4X MSAA (�4.1.8).  The default is false.
+	bool      m4xMsaaState = false;    // 4X MSAA enabled
+	UINT      m4xMsaaQuality = 0;      // quality level of 4X MSAA
 
-    Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
-    UINT64 mCurrentFence = 0;
+	Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
+	Microsoft::WRL::ComPtr<IDXGISwapChain1> mSwapChain;
+	Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
 
-    Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue;
-    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mDirectCmdListAlloc;
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
+	Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
+	UINT64 mCurrentFence = 0;
 
-    static const int SwapChainBufferCount = 2;
-    int mCurrBackBuffer = 0;
-    Microsoft::WRL::ComPtr<ID3D12Resource> mSwapChainBuffer[SwapChainBufferCount];
-    Microsoft::WRL::ComPtr<ID3D12Resource> mDepthStencilBuffer;
+	Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue;
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mDirectCmdListAlloc;
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
 
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap;
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDsvHeap;
+	static const int SwapChainBufferCount = 2;
+	int mCurrBackBuffer = 0;
+	Microsoft::WRL::ComPtr<ID3D12Resource> mSwapChainBuffer[SwapChainBufferCount];
+	Microsoft::WRL::ComPtr<ID3D12Resource> mDepthStencilBuffer;
 
-    D3D12_VIEWPORT mScreenViewport;
-    D3D12_RECT mScissorRect;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDsvHeap;
 
-    UINT mRtvDescriptorSize = 0;
-    UINT mDsvDescriptorSize = 0;
-    UINT mCbvSrvUavDescriptorSize = 0;
+	D3D12_VIEWPORT mScreenViewport;
+	D3D12_RECT mScissorRect;
 
-    UINT skinnedCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(SkinnedConstants));
-    UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-    UINT equippedObjCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(EquippedObjectConstants));
+	UINT mRtvDescriptorSize = 0;
+	UINT mDsvDescriptorSize = 0;
+	UINT mCbvSrvUavDescriptorSize = 0;
 
-    // Derived class should set these in derived constructor to customize starting values.
-    std::wstring mMainWndCaption = L"d3d App";
-    D3D_DRIVER_TYPE md3dDriverType = D3D_DRIVER_TYPE_HARDWARE;
-    DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-    DXGI_FORMAT mDepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    int mClientWidth = 800;
-    int mClientHeight = 600;
+	UINT skinnedCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(SkinnedConstants));
+	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT equippedObjCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(EquippedObjectConstants));
+
+	// Derived class should set these in derived constructor to customize starting values.
+	std::wstring mMainWndCaption = L"d3d App";
+	D3D_DRIVER_TYPE md3dDriverType = D3D_DRIVER_TYPE_HARDWARE;
+	DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	DXGI_FORMAT mDepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	int mClientWidth = 800;
+	int mClientHeight = 600;
 
 private:
-    std::vector<std::unique_ptr<FrameResource>> mFrameResources;
-    FrameResource* mCurrFrameResource = nullptr;
-    int mCurrFrameResourceIndex = 0;
+	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
+	FrameResource* mCurrFrameResource = nullptr;
+	int mCurrFrameResourceIndex = 0;
 
-    ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
-    ComPtr<ID3D12RootSignature> mSsaoRootSignature = nullptr;
+	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
+	ComPtr<ID3D12RootSignature> mSsaoRootSignature = nullptr;
 
-    ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
+	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 
-    std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
-    std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
-    std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
-    std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
-    std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
-    std::unordered_map <std::string, std::unique_ptr<AnimationSets>> mSkinnedAnimationSets;
+	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
+	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
+	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
+	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
+	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
+	std::unordered_map <std::string, std::unique_ptr<AnimationSets>> mSkinnedAnimationSets;
 
-    std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
-    std::vector<D3D12_INPUT_ELEMENT_DESC> mSkinnedInputLayout;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> mSkinnedInputLayout;
 
-    UINT mNullCubeSrvIndex = 0;
-    UINT mNullTexSrvIndex1 = 0;
-    UINT mNullTexSrvIndex2 = 0;
+	UINT mNullCubeSrvIndex = 0;
+	UINT mNullTexSrvIndex1 = 0;
+	UINT mNullTexSrvIndex2 = 0;
 
-    CD3DX12_GPU_DESCRIPTOR_HANDLE mNullSrv;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE mNullSrv;
 
-    PassConstants mMainPassCB;  // index 0 of pass cbuffer.
+	PassConstants mMainPassCB;  // index 0 of pass cbuffer.
 
-    FbxBinLoader fbxBinLoader;
-    UINT mSkinnedSrvHeapStart = 0;
-    std::string mSkinnedModelFilename = "Models\\RPGModel.bin";
-    std::vector<std::string> mSkinnedTextureNames;
-    std::vector<MaterialInfo> mSkinnedMats;
-    
-    // shadow
-    UINT mShadowMapHeapIndex = 0;
-    std::unique_ptr<ShadowMap> mShadowMap;
-    DirectX::BoundingSphere mSceneBounds;
-    PassConstants mShadowPassCB;// index 1 of pass cbuffer.
-    
-    // ssao
-    UINT mSsaoHeapIndexStart = 0;
-    UINT mSsaoAmbientMapIndex = 0;
-    std::unique_ptr<Ssao> mSsao;
+	FbxBinLoader fbxBinLoader;
+	UINT mSkinnedSrvHeapStart = 0;
+	std::string mSkinnedModelFilename = "Models\\RPGModel.bin";
+	std::vector<std::string> mSkinnedTextureNames;
+	std::vector<MaterialInfo> mSkinnedMats;
 
-    // light
-    float mLightNearZ = 0.0f;
-    float mLightFarZ = 0.0f;
-    XMFLOAT3 mLightPosW;
-    XMFLOAT4X4 mLightView = MathHelper::Identity4x4();
-    XMFLOAT4X4 mLightProj = MathHelper::Identity4x4();
-    XMFLOAT4X4 mShadowTransform = MathHelper::Identity4x4();
-    float mLightRotationAngle = 0.0f;
-    XMFLOAT3 mBaseLightDirections[3] = {
-        XMFLOAT3(0.57735f, -0.57735f, 0.57735f),
-        XMFLOAT3(-0.57735f, -0.57735f, 0.57735f),
-        XMFLOAT3(0.0f, -0.707f, -0.707f)
-    };
-    XMFLOAT3 mRotatedLightDirections[3];
+	// shadow
+	UINT mShadowMapHeapIndex = 0;
+	std::unique_ptr<ShadowMap> mShadowMap;
+	DirectX::BoundingSphere mSceneBounds;
+	PassConstants mShadowPassCB;// index 1 of pass cbuffer.
 
-    // input
-    POINT mLastMousePos;
+	// ssao
+	UINT mSsaoHeapIndexStart = 0;
+	UINT mSsaoAmbientMapIndex = 0;
+	std::unique_ptr<Ssao> mSsao;
+
+	// light
+	float mLightNearZ = 0.0f;
+	float mLightFarZ = 0.0f;
+	XMFLOAT3 mLightPosW;
+	XMFLOAT4X4 mLightView = MathHelper::Identity4x4();
+	XMFLOAT4X4 mLightProj = MathHelper::Identity4x4();
+	XMFLOAT4X4 mShadowTransform = MathHelper::Identity4x4();
+	float mLightRotationAngle = 0.0f;
+	XMFLOAT3 mBaseLightDirections[3] = {
+		XMFLOAT3(0.57735f, -0.57735f, 0.57735f),
+		XMFLOAT3(-0.57735f, -0.57735f, 0.57735f),
+		XMFLOAT3(0.0f, -0.707f, -0.707f)
+	};
+	XMFLOAT3 mRotatedLightDirections[3];
+
+	// input
+	POINT mLastMousePos;
 };

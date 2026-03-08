@@ -13,8 +13,8 @@
 class GameWorld {
 private:
 	DenseTable<GameObject> gameObjects;
-	std::map<Handle<Component>, Component*> anyComponents;
-	std::unordered_map<std::type_index, std::unique_ptr<AnyVector>> components;
+	std::map<Handle<Component>, AnyVector<Component>*> anyComponents;
+	std::unordered_map<std::type_index, std::unique_ptr<AnyVector<Component>>> components;
 
 	template <typename T, typename Base = T>
 		requires std::derived_from<std::remove_cvref_t<T>, Base> && std::derived_from<std::remove_cvref_t<Base>, WithId< std::remove_cvref_t<Base>>>
@@ -24,7 +24,7 @@ private:
 		std::type_index index{ typeid(raw_t) };
 		if (components.find(index) == components.end()) {
 			components.emplace(index,
-				std::unique_ptr<AnyVector>(new DenseTable<raw_t, Base>));
+				std::unique_ptr<AnyVector<Base>>(new DenseTable<raw_t, Base>));
 		}
 		DenseTable<raw_t, Base>& v =
 			*reinterpret_cast<DenseTable<raw_t, Base> *>(components[index].get());
@@ -56,7 +56,7 @@ public:
 
 		auto& v = GetComponentTable<T, Component>();
 		auto [handle, ref] = v.Emplace(std::forward<T>(component));
-		anyComponents[handle] = &ref.get();
+		anyComponents[handle] = &v;
 		obj->AttachComponent<T>(handle);
 		return handle;
 	}
@@ -108,7 +108,7 @@ public:
 		if (it == anyComponents.end()) {
 			return nullptr;
 		}
-		return it->second;
+		return it->second->GetCommon(handle);
 	}
 
 	template <typename T>
