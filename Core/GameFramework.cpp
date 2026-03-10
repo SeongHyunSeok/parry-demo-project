@@ -1,16 +1,12 @@
 #define WORLD_MAIN
 
 #include "GameFramework.h"
-#include "physics.h"
 #include "world.h"
 #include "inputs.h"
 #include <WindowsX.h>
 
-#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
-#include "Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h"
-#include "Jolt/Physics/Character/CharacterVirtual.h"
 
 
 using Microsoft::WRL::ComPtr;
@@ -101,6 +97,10 @@ int GameFramework::Run()
 			if (!mAppPaused)
 			{
 				float dt = mTimerView.GetElapsed<std::chrono::milliseconds>()->count() / 1000.f;
+				// Force FPS to 15 when it is lower than 15 fps to make physics engine stable
+				if (dt > (1.f / 15.f)) {
+					dt = (1.f / 15.f);
+				}
 				CalculateFrameStats();
 				Update(dt);
 				Draw(dt);
@@ -899,7 +899,7 @@ void GameFramework::Update(float dt)
 	float distance = 0.0f;
 	XMStoreFloat(&distance, XMVector3Length(distVec));
 
-	if (distance < 3.0f && 
+	if (distance < 3.0f &&
 		pComPlayerStateMachine->GetCurrentSatateType() == StateType::Attack)
 	{
 		if (pComPlayerStateMachine->IsInValidFrame() && comEnemyStateMachine.GetCurrentSatateType() == StateType::Idle
@@ -921,7 +921,7 @@ void GameFramework::Update(float dt)
 			GameEvent ge;
 			ge.eventType = GameEventType::ActiveFatalAttack;
 			pComPlayerStateMachine->HandleGameEvent(ge);
-			
+
 			XMINT3 hitDir = { 0, 0, 1 };
 			GameEvent enemyGe;
 			enemyGe.eventType = GameEventType::Hit;
@@ -1221,12 +1221,10 @@ void GameFramework::HandleMouseInput(Camera& camera, float dt) {
 		camera.Pitch(dy);
 		camera.RotateY(dx);
 	}
-	else {
-		auto& comPlayer = WORLD.GetComponents<PlayerComponent>().front();
-		auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(comPlayer.GetOwner());
-		pPlayerMesh->Rotation.y += XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
-		pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
-	}
+	auto& comPlayer = WORLD.GetComponents<PlayerComponent>().front();
+	auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(comPlayer.GetOwner());
+	pPlayerMesh->Rotation.y += XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
+	pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
 }
 
 void GameFramework::AnimateMaterials(float dt)
@@ -1315,17 +1313,26 @@ void GameFramework::UpdateSkinnedCBs(float dt)
 				pComChar->targetVelocity = offset / dt;
 			}
 			else {
-				//XMFLOAT3 transformedPosition;
-				//XMStoreFloat3(
-				//	&transformedPosition,
-				//	XMVector3Transform(XMLoadFloat3(&comAni.mSkinnedModelAnimationController->rootBoneTranslationResult), 
-				//		transform)
-				//);
-				pComMesh->Translation = Vector3::Add(pComMesh->Translation, translationDiff);
-				//pComMesh->Translation.y = transformedPosition.y;
-				//pComMesh->Translation = Vector3::Add(pComMesh->Translation,
-				//    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
-				pComMesh->NumFramesDirty = gNumFrameResources;
+				auto pComSimpleChar = WORLD.GetComponent<physics::SimpleCharacterBody>(comAni.GetOwner());
+				if (pComSimpleChar) {
+					// TODO: Handle animations marked as vertically movable
+					physics::Vec3 offset{ translationDiff.x, 0, translationDiff.z };
+					// We divide the offset by dt to make it a velocity
+					pComSimpleChar->targetVelocity = offset / dt;
+				}
+				else {
+					//XMFLOAT3 transformedPosition;
+					//XMStoreFloat3(
+					//	&transformedPosition,
+					//	XMVector3Transform(XMLoadFloat3(&comAni.mSkinnedModelAnimationController->rootBoneTranslationResult), 
+					//		transform)
+					//);
+					pComMesh->Translation = Vector3::Add(pComMesh->Translation, translationDiff);
+					//pComMesh->Translation.y = transformedPosition.y;
+					//pComMesh->Translation = Vector3::Add(pComMesh->Translation,
+					//    XMFLOAT3(-pComMesh->Scale.x * translationDiff.x, 0, -pComMesh->Scale.z * translationDiff.z));
+					pComMesh->NumFramesDirty = gNumFrameResources;
+				}
 			}
 		}
 	}
@@ -2159,7 +2166,7 @@ void GameFramework::LoadSkinnedModel()
 
 	XMVECTOR quat = MathHelper::QuaternionFromPithYawRoll(-2.0f, -0.1f, -0.5f);
 	animationSet->equipmentLocations[EquipmentType::OneHandSword] = EquipmentLocation(
-		37, XMMatrixTranslation(-2.0f, -0.5f , -7.0f) * XMMatrixRotationQuaternion(quat)
+		37, XMMatrixTranslation(-2.0f, -0.5f, -7.0f) * XMMatrixRotationQuaternion(quat)
 	);
 	animationSet->equipmentLocations[EquipmentType::Shield] = EquipmentLocation(
 		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
@@ -2750,10 +2757,10 @@ void GameFramework::BuildRenderItems()
 	auto pPlayerObj = WORLD.GetGameObject(hPlayerObj);
 	pPlayerObj->AddChild(WORLD, GetMainCamera().GetOwner());
 	WORLD.AttachComponent(hPlayerObj, PlayerComponent(hPlayerObj));
-	
+
 	XMFLOAT3 playerOffset = XMFLOAT3(0.0f, 0.f, -5.0f);
 	XMFLOAT3 playerRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
-	BuildHumanoidItem(
+	BuildHumanoidItem<CharacterBody>(
 		hPlayerObj,
 		skinnedCBIndexCounter,
 		equippedCBIndexCounter,
@@ -2804,88 +2811,6 @@ void GameFramework::BuildRenderItems()
 
 }
 
-void GameFramework::BuildHumanoidItem(
-	Handle<GameObject> handle,
-	UINT& skinnedCBIndexCounter,
-	UINT& equippedCBIndexCounter,
-	Material* pMaterial,
-	XMFLOAT3& modelOffset,
-	XMFLOAT3& modelRotation,
-	UINT& objCBIndexCounter,
-	Material* pEquipmentMaterial,
-	bool hasOneHandSword,
-	bool hasShield
-) {
-	using namespace physics;
-	using namespace JPH;
-
-	MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
-	int subMeshCounts = skinnedModelGeo->DrawArgs.size();
-	std::vector<MeshGeometry*> geometries(subMeshCounts, skinnedModelGeo);
-	std::vector<std::string> subMeshNames;
-	std::vector<Material*> materials;
-	int idx = 0;
-	for (const auto& [subMeshName, subMesh] : skinnedModelGeo->DrawArgs) {
-		subMeshNames.push_back(subMeshName);
-		materials.push_back(pMaterial);
-	}
-
-	XMFLOAT3 modelScale = XMFLOAT3(0.03f, 0.03f, 0.03f);
-	MeshComponent comMesh(handle, objCBIndexCounter++,
-		modelScale, modelRotation, modelOffset, XMMatrixIdentity(),
-		geometries, subMeshNames, materials
-	);
-	WORLD.AttachComponent(handle, std::move(comMesh));
-
-	AnimationComponent comAnimation{ handle };
-	comAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
-	comAnimation.mSkinnedModelAnimationController =
-		std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
-	//comAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
-	WORLD.AttachComponent(handle, std::move(comAnimation));
-
-	Ref<CharacterVirtualSettings> settings = new CharacterVirtualSettings();
-	float characterHeight = 5.0f;
-	float characterRadius = 0.3f;
-	RotatedTranslatedShapeSettings shapeSetting{ Vec3{0.f, 0.5f * characterHeight + characterRadius, 0.f}, Quat::sIdentity(), new CapsuleShape(0.5f * characterHeight, characterRadius) };
-	settings->mShape = shapeSetting.Create().Get();
-	settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
-	physics::CharacterBody comPlayerController{
-		handle,
-		*settings,
-		Vec3(modelOffset.x, 10.f, modelOffset.z),
-		Quat::sIdentity(),
-		PHYSICS_SYSTEM,
-		std::make_unique<MyCharacterContactListener>()
-	};
-	WORLD.AttachComponent(handle, std::move(comPlayerController));
-
-	EquipmentOwnerComponent comEquipmentOwner{ handle, equippedCBIndexCounter };
-
-	if (hasOneHandSword)
-	{
-		BuildEquipmentItem(
-			handle,
-			objCBIndexCounter,
-			comEquipmentOwner,
-			EquipmentType::OneHandSword,
-			pEquipmentMaterial
-		);
-	}
-	if (hasShield)
-	{
-		BuildEquipmentItem(
-			handle,
-			objCBIndexCounter,
-			comEquipmentOwner,
-			EquipmentType::Shield,
-			pEquipmentMaterial
-		);
-	}
-
-	WORLD.AttachComponent(handle, std::move(comEquipmentOwner));
-}
-
 void GameFramework::BuildEquipmentItem(
 	Handle<GameObject> ownerHandle,
 	UINT& objCBIndexCounter,
@@ -2902,7 +2827,7 @@ void GameFramework::BuildEquipmentItem(
 	MeshComponent comMesh(hEquipmentObj, objCBIndexCounter++,
 		XMFLOAT3(0.03f, 0.03f, 0.03f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, 0.0f),
 		XMMatrixIdentity(),
-		{ mGeometries["equipmentGeo"].get() }, { subMeshNames[(UINT)equipmentType] }, { pMaterial  }
+		{ mGeometries["equipmentGeo"].get() }, { subMeshNames[(UINT)equipmentType] }, { pMaterial }
 	);
 	auto comEquipment = EquipmentComponent(hEquipmentObj);
 	comEquipment.equipmentType = equipmentType;

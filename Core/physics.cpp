@@ -42,12 +42,12 @@ namespace physics {
 			auto& meta2 = *reinterpret_cast<BodyMetadata*>(inBody2.GetUserData());
 			auto pObject1 = WORLD.GetGameObject(meta1.owner);
 			auto pObject2 = WORLD.GetGameObject(meta2.owner);
-			assert(pObject1);
-			assert(pObject2);
-			Event ev1{ CollidedWith{meta2.owner} };
-			Event ev2{ CollidedWith{meta1.owner} };
-			pObject1->HandleEvent(ev1);
-			pObject2->HandleEvent(ev2);
+			if (pObject1 && pObject2) {
+				Event ev1{ CollidedWith{meta2.owner} };
+				Event ev2{ CollidedWith{meta1.owner} };
+				pObject1->HandleEvent(ev1);
+				pObject2->HandleEvent(ev2);
+			}
 		}
 
 		virtual void OnContactPersisted(const Body& inBody1, const Body& inBody2,
@@ -268,8 +268,9 @@ namespace physics {
 		static float accDeltaTime = 0.0f;
 		accDeltaTime += deltaTime;
 
-		auto& characters = WORLD.GetComponents<CharacterBody>();
-		for (auto& character : characters) {
+
+		auto& simpleCharacters = WORLD.GetComponents<SimpleCharacterBody>();
+		for (auto& character : simpleCharacters) {
 			character.Update(deltaTime);
 		}
 
@@ -280,6 +281,23 @@ namespace physics {
 
 			PHYSICS_SYSTEM.Update(simulationDeltaTime, requiredSteps, temp_allocator,
 				job_system);
+
+			for (auto& character : simpleCharacters) {
+				character.GetController().PostSimulation(0.05f);
+				auto pMesh = WORLD.GetComponent<MeshComponent>(character.GetOwner());
+				if (pMesh) {
+					auto pos = character.GetController().GetPosition();
+					pMesh->Translation.x = pos.GetX();
+					pMesh->Translation.y = pos.GetY();
+					pMesh->Translation.z = pos.GetZ();
+					pMesh->NumFramesDirty = gNumFrameResources;
+				}
+			}
+		}
+
+		auto& characters = WORLD.GetComponents<CharacterBody>();
+		for (auto& character : characters) {
+			character.Update(deltaTime);
 		}
 
 		for (auto& character : characters) {
@@ -289,8 +307,8 @@ namespace physics {
 				auto pos = character.GetController().GetPosition();
 				pMesh->Translation.x = pos.GetX();
 				pMesh->Translation.y = pos.GetY();
-				pMesh->NumFramesDirty = gNumFrameResources;
 				pMesh->Translation.z = pos.GetZ();
+				pMesh->NumFramesDirty = gNumFrameResources;
 			}
 		}
 	}
@@ -408,5 +426,46 @@ namespace physics {
 			PHYSICS_SYSTEM.GetDefaultLayerFilter(Layers::MOVING),
 			{}, {},
 			*temp_allocator);
+	}
+
+	void SimpleCharacterBody::Update(float dt)
+	{
+		auto currentVelocity = controller->GetLinearVelocity();
+		auto desiredVelocity = targetVelocity;
+		if (!desiredVelocity.IsNearZero() || currentVelocity.GetY() < 0.0f || !controller->IsSupported())
+			desiredVelocity.SetY(currentVelocity.GetY());
+		desiredVelocity = 0.25 * desiredVelocity + 0.75 * currentVelocity;
+		controller->SetLinearVelocity(desiredVelocity);
+	}
+
+	void MyCharacterContactListener::OnContactSolve(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, Vec3Arg inContactVelocity, const PhysicsMaterial* inContactMaterial, Vec3Arg inCharacterVelocity, Vec3& ioNewCharacterVelocity)
+	{
+		//auto& lInterface = PHYSICS_SYSTEM.GetBodyInterfaceNoLock();
+		//BodyMetadata* metadata = reinterpret_cast<BodyMetadata*>(lInterface.GetUserData(inBodyID2));
+
+		//if (!WORLD.GetComponent<SimpleCharacterBody>(metadata->owner)) {
+		//	return;
+		//}
+		//auto bodyPos = lInterface.GetPosition(inBodyID2);
+		//// Contact Normal is already unit vector.
+		//auto projPos = inContactNormal * (inContactNormal.Dot(bodyPos));
+		//auto projContact = inContactNormal * (inContactNormal.Dot(inContactPosition));
+		//lInterface.SetPosition(inBodyID2, bodyPos + (projContact - (projPos + inContactNormal * 0.9f)), EActivation::Activate);
+	}
+
+	void MyCharacterContactListener::OnContactCommon(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings& ioSettings)
+	{
+		ioSettings.mCanPushCharacter = false;
+		ioSettings.mCanReceiveImpulses = false;
+	}
+
+	void MyCharacterContactListener::OnContactAdded(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings& ioSettings)
+	{
+		OnContactCommon(inCharacter, inBodyID2, inSubShapeID2, inContactPosition, inContactNormal, ioSettings);
+	}
+
+	void MyCharacterContactListener::OnContactPersisted(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings& ioSettings)
+	{
+		OnContactCommon(inCharacter, inBodyID2, inSubShapeID2, inContactPosition, inContactNormal, ioSettings);
 	}
 } // namespace physics
