@@ -44,6 +44,7 @@ public:
 	//}
 };
 
+template <class CommonT>
 class AnyVector {
 protected:
 	AnyVector() = default;
@@ -51,11 +52,15 @@ protected:
 	AnyVector(AnyVector&&) = default;
 	AnyVector& operator=(const AnyVector&) = default;
 	AnyVector& operator=(AnyVector&&) = default;
+
+public:
+	virtual CommonT* GetCommon(Handle<CommonT> handle) = 0;
+	virtual const CommonT* GetCommon(Handle<CommonT> handle) const = 0;
 };
 
 template <typename T, typename Base = T>
 	requires std::derived_from<T, Base>&& std::derived_from<Base, WithId<Base>>
-class DenseTable : public AnyVector {
+class DenseTable : public AnyVector<Base> {
 private:
 	using HandleIdx = size_t;
 	using EntityIdx = size_t;
@@ -116,6 +121,14 @@ public:
 			return nullptr;
 		}
 		return &entity;
+	}
+
+	inline Base* GetCommon(Handle<Base> handle) override {
+		return Get(handle);
+	}
+
+	inline const Base* GetCommon(Handle<Base> handle) const override {
+		return Get(handle);
 	}
 
 	std::optional<T> Erase(Handle<Base> handle) {

@@ -20,6 +20,7 @@
 #include "Jolt/Physics/Body/MotionType.h"
 #include "Jolt/Physics/Collision/ObjectLayer.h"
 #include "Jolt/Physics/Collision/Shape/Shape.h"
+#include "Jolt/Physics/Character/Character.h"
 #include "Jolt/Physics/Character/CharacterVirtual.h"
 #include "Jolt/Physics/EActivation.h"
 #include "component.h"
@@ -38,7 +39,14 @@ namespace physics {
 	}; // namespace Layers
 
 	class MyCharacterContactListener : public CharacterContactListener {
+	public:
+		void OnContactSolve(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, Vec3Arg inContactVelocity, const PhysicsMaterial* inContactMaterial, Vec3Arg inCharacterVelocity, Vec3& ioNewCharacterVelocity) override;
 
+		void OnContactCommon(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings& ioSettings);
+
+		void OnContactAdded(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings& ioSettings) override;
+
+		void OnContactPersisted(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings& ioSettings) override;
 	};
 
 	/// Class that determines if two object layers can collide
@@ -253,11 +261,50 @@ namespace physics {
 		virtual EventPropagation HandleEvent(Event& event) override;
 	};
 
+	class SimpleCharacterBody : public Component {
+	private:
+		std::unique_ptr<Character> controller = nullptr;
+
+	public:
+		using Settings = CharacterSettings;
+		Vec3 targetVelocity = Vec3::sZero();
+
+		SimpleCharacterBody(Handle<GameObject> owner,
+			const Settings& settings,
+			RVec3Arg position,
+			QuatArg rotation,
+			PhysicsSystem& physicsSystem) : Component{ owner } {
+			controller.reset(new Character{ &settings, position, rotation, reinterpret_cast<uint64_t>(new BodyMetadata{ owner }), &physicsSystem });
+			controller->AddToPhysicsSystem(EActivation::Activate);
+		}
+		SimpleCharacterBody(const SimpleCharacterBody&) = delete;
+		SimpleCharacterBody& operator=(const SimpleCharacterBody&) = delete;
+		SimpleCharacterBody(SimpleCharacterBody&&) = default;
+		SimpleCharacterBody& operator=(SimpleCharacterBody&&) = default;
+		~SimpleCharacterBody() {
+			if (controller) {
+				auto& lInterface = PHYSICS_SYSTEM.GetBodyInterfaceNoLock();
+				auto bodyId = controller->GetBodyID();
+				auto userdata = lInterface.GetUserData(bodyId);
+				if (userdata != 0) {
+					delete reinterpret_cast<BodyMetadata*>(userdata);
+				}
+				lInterface.RemoveBody(bodyId);
+			}
+		}
+
+		Character& GetController() { return *controller; }
+		const Character& GetController() const { return *controller; }
+		void Update(float dt);
+	};
+
 	class CharacterBody : public Component {
 	private:
 		std::unique_ptr<CharacterVirtual> controller = nullptr;
 
 	public:
+		using Settings = CharacterVirtualSettings;
+
 		Vec3 targetVelocity = Vec3::sZero();
 		Vec3 desiredVelocity = Vec3::sZero();
 		bool allowSliding = false;
@@ -266,12 +313,12 @@ namespace physics {
 		const float jumpSpeed = 6.f;
 
 		CharacterBody(Handle<GameObject> owner,
-			const CharacterVirtualSettings& settings,
+			const Settings& settings,
 			RVec3Arg position,
 			QuatArg rotation,
 			PhysicsSystem& physicsSystem,
 			std::unique_ptr<CharacterContactListener> listener) : Component{ owner } {
-			controller.reset(new CharacterVirtual{ &settings, position, rotation, (uint64)this, &physicsSystem });
+			controller.reset(new CharacterVirtual{ &settings, position, rotation, reinterpret_cast<uint64_t>(new BodyMetadata{ owner }), &physicsSystem });
 			controller->SetListener(listener.release());
 		}
 		CharacterBody(const CharacterBody&) = delete;
