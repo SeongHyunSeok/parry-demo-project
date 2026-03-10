@@ -214,9 +214,9 @@ public:
 	~AnimationSets();
 public:
 	std::unordered_map<AnimationType, AnimationSet*> animationSets;
-	std::unordered_map<AnimationType, AnimationSetInfo> animationSetInfos;
 	std::vector<int> boneHierarchy;
 	std::vector<DirectX::XMFLOAT4X4> boneOffsets;
+	std::unordered_map<AnimationType, AnimationSetInfo> animationSetInfos;
 	std::unordered_map<EquipmentType, EquipmentLocation> equipmentLocations;
 	std::unordered_map<std::string, AnimationSet> rawAnimationSets;
 public:
