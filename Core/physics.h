@@ -318,7 +318,7 @@ namespace physics {
 			QuatArg rotation,
 			PhysicsSystem& physicsSystem,
 			std::unique_ptr<CharacterContactListener> listener) : Component{ owner } {
-			controller.reset(new CharacterVirtual{ &settings, position, rotation, (uint64)this, &physicsSystem });
+			controller.reset(new CharacterVirtual{ &settings, position, rotation, reinterpret_cast<uint64_t>(new BodyMetadata{ owner }), &physicsSystem });
 			controller->SetListener(listener.release());
 		}
 		CharacterBody(const CharacterBody&) = delete;

@@ -42,12 +42,12 @@ namespace physics {
 			auto& meta2 = *reinterpret_cast<BodyMetadata*>(inBody2.GetUserData());
 			auto pObject1 = WORLD.GetGameObject(meta1.owner);
 			auto pObject2 = WORLD.GetGameObject(meta2.owner);
-			assert(pObject1);
-			assert(pObject2);
-			Event ev1{ CollidedWith{meta2.owner} };
-			Event ev2{ CollidedWith{meta1.owner} };
-			pObject1->HandleEvent(ev1);
-			pObject2->HandleEvent(ev2);
+			if (pObject1 && pObject2) {
+				Event ev1{ CollidedWith{meta2.owner} };
+				Event ev2{ CollidedWith{meta1.owner} };
+				pObject1->HandleEvent(ev1);
+				pObject2->HandleEvent(ev2);
+			}
 		}
 
 		virtual void OnContactPersisted(const Body& inBody1, const Body& inBody2,
@@ -440,17 +440,17 @@ namespace physics {
 
 	void MyCharacterContactListener::OnContactSolve(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, Vec3Arg inContactVelocity, const PhysicsMaterial* inContactMaterial, Vec3Arg inCharacterVelocity, Vec3& ioNewCharacterVelocity)
 	{
-		auto& lInterface = PHYSICS_SYSTEM.GetBodyInterfaceNoLock();
-		BodyMetadata* metadata = reinterpret_cast<BodyMetadata*>(lInterface.GetUserData(inBodyID2));
+		//auto& lInterface = PHYSICS_SYSTEM.GetBodyInterfaceNoLock();
+		//BodyMetadata* metadata = reinterpret_cast<BodyMetadata*>(lInterface.GetUserData(inBodyID2));
 
-		if (!WORLD.GetComponent<SimpleCharacterBody>(metadata->owner)) {
-			return;
-		}
-		auto bodyPos = lInterface.GetPosition(inBodyID2);
-		// Contact Normal is already unit vector.
-		auto projPos = inContactNormal * (inContactNormal.Dot(bodyPos));
-		auto projContact = inContactNormal * (inContactNormal.Dot(inContactPosition));
-		lInterface.SetPosition(inBodyID2, bodyPos + (projContact - (projPos + inContactNormal * 0.9f)), EActivation::Activate);
+		//if (!WORLD.GetComponent<SimpleCharacterBody>(metadata->owner)) {
+		//	return;
+		//}
+		//auto bodyPos = lInterface.GetPosition(inBodyID2);
+		//// Contact Normal is already unit vector.
+		//auto projPos = inContactNormal * (inContactNormal.Dot(bodyPos));
+		//auto projContact = inContactNormal * (inContactNormal.Dot(inContactPosition));
+		//lInterface.SetPosition(inBodyID2, bodyPos + (projContact - (projPos + inContactNormal * 0.9f)), EActivation::Activate);
 	}
 
 	void MyCharacterContactListener::OnContactCommon(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings& ioSettings)

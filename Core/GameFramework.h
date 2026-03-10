@@ -164,6 +164,8 @@ private:
 			Ref<CharacterBody::Settings> settings = new CharacterBody::Settings();
 			settings->mShape = shapeSetting.Create().Get();
 			settings->mSupportingVolume = Plane(Vec3::sAxisY(), -characterHeight);
+			settings->mInnerBodyLayer = Layers::MOVING;
+			settings->mInnerBodyShape = settings->mShape;
 			CharacterBody comPlayerController{
 				handle,
 				*settings,
