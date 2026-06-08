@@ -28,6 +28,11 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx12.h"
+#include "SimpleDescriptorHeapAllocator.h"
+
 // Link necessary d3d12 libraries.
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -37,6 +42,9 @@ using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
 using namespace Microsoft::WRL;
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+static SimpleDescriptorHeapAllocator mImGuiSrvDescHeapAlloc;
 
 class GameFramework
 {
@@ -77,6 +85,7 @@ protected:
 
 	bool InitMainWindow();
 	bool InitDirect3D();
+	bool InitImGui();
 	void CreateCommandObjects();
 	void CreateSwapChain();
 
@@ -103,6 +112,7 @@ private:
 	void UpdateMainPassCB(float dt);
 	void UpdateShadowPassCB(float dt);
 	void UpdateSsaoCB(float dt);
+	void UpdateImGui();
 
 	void LoadTextures();
 	void BuildRootSignature();
@@ -356,4 +366,11 @@ private:
 
 	// input
 	POINT mLastMousePos;
+
+	// imgui
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mImGuiSrvHeap;
+	// imgui test
+	bool show_demo_window = true;
+	bool show_another_window = false;
+	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 };

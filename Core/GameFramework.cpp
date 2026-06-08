@@ -43,6 +43,10 @@ GameFramework::~GameFramework()
 {
 	if (md3dDevice != nullptr)
 		FlushCommandQueue();
+
+	ImGui_ImplDX12_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
 }
 
 HINSTANCE GameFramework::AppInst()const
@@ -162,6 +166,8 @@ bool GameFramework::Initialize()
 	if (!InitDirect3D())
 		return false;
 
+	if (!InitImGui())
+		return false;
 
 	// Initialization
 	auto initTimePoint = GLOBAL_TIMER.Now();
@@ -218,6 +224,9 @@ bool GameFramework::Initialize()
 LRESULT CALLBACK
 MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+		return true;
+
 	// Forward hwnd on because we can get messages (e.g., WM_CREATE)
 	// before CreateWindow returns, and thus before mhMainWnd is valid.
 	return GameFramework::GetApp()->MsgProc(hwnd, msg, wParam, lParam);
@@ -263,7 +272,7 @@ bool GameFramework::InitMainWindow()
 	RAWINPUTDEVICE Rid;
 	Rid.usUsagePage = 0x01;
 	Rid.usUsage = 0x02;
-	Rid.dwFlags = RIDEV_NOLEGACY;
+	Rid.dwFlags = 0;
 	Rid.hwndTarget = mhMainWnd;
 
 	if (RegisterRawInputDevices(&Rid, 1, sizeof(Rid)) == FALSE) {
@@ -540,6 +549,56 @@ CreateSwapChain();
 CreateRtvAndDsvDescriptorHeaps();
 
 return true;
+}
+
+bool GameFramework::InitImGui()
+{
+	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	desc.NumDescriptors = 64;
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
+		&desc, IID_PPV_ARGS(mImGuiSrvHeap.GetAddressOf())));
+
+	mImGuiSrvDescHeapAlloc.Create(md3dDevice.Get(), mImGuiSrvHeap.Get());
+
+	// Make process DPI aware and obtain main monitor scale
+	ImGui_ImplWin32_EnableDpiAwareness();
+	float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(::MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY));
+
+	// Setup Dear ImGui context
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+	// Setup Dear ImGui style
+	ImGui::StyleColorsDark();
+	//ImGui::StyleColorsLight();
+
+	// Setup scaling
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
+	style.FontScaleDpi = main_scale;        // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
+
+	// Setup Platform/Renderer backends
+	ImGui_ImplWin32_Init(mhMainWnd);
+
+	ImGui_ImplDX12_InitInfo init_info = {};
+	init_info.Device = md3dDevice.Get();
+	init_info.CommandQueue = mCommandQueue.Get();
+	init_info.NumFramesInFlight = gNumFrameResources;
+	init_info.RTVFormat = mBackBufferFormat;
+	init_info.DSVFormat = mDepthStencilFormat;
+	// Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
+	// (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
+	init_info.SrvDescriptorHeap = mImGuiSrvHeap.Get();
+	init_info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_handle) { return mImGuiSrvDescHeapAlloc.Alloc(out_cpu_handle, out_gpu_handle); };
+	init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle) { return mImGuiSrvDescHeapAlloc.Free(cpu_handle, gpu_handle); };
+	ImGui_ImplDX12_Init(&init_info);
+
+	return true;
 }
 
 void GameFramework::CreateCommandObjects()
@@ -873,6 +932,8 @@ void GameFramework::Update(float dt)
 	HandleKeyboardInput(camera, dt);
 	HandleMouseInput(camera, dt);
 
+	UpdateImGui();
+
 	//
 	// Animate the lights (and hence shadows).
 	//
@@ -1096,6 +1157,10 @@ void GameFramework::Draw(float dt)
 		DrawRenderItem(mCommandList.Get(), pSkyMeshComp);
 	}
 
+	// Render Dear ImGui graphics
+	ImGui::Render();
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
+
 	// Indicate a state transition on the resource usage.
 	auto rtToPre = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
@@ -1134,7 +1199,7 @@ void GameFramework::OnMouseUp(WPARAM btnState, int x, int y)
 void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 {
 	using namespace physics;
-	const auto& inputManager = InputManager::GetInstance();
+	auto& inputManager = InputManager::GetInstance();
 
 	// '[' key pressed
 	if (inputManager.IsJustReleased(VK_OEM_4))
@@ -1180,6 +1245,10 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 
 	if (playerInput.shield && inputManager.IsJustPressed(VK_RBUTTON)) {
 		playerInput.type = InputType::Parray;
+	}
+
+	if (inputManager.IsJustPressed(VK_CAPITAL)) {
+		inputManager.LockMouse(!inputManager.IsMouseLocked());
 	}
 
 	player.Input(playerInput);
@@ -1534,6 +1603,52 @@ void GameFramework::UpdateSsaoCB(float dt)
 
 	auto currSsaoCB = mCurrFrameResource->SsaoCB.get();
 	currSsaoCB->CopyData(0, ssaoCB);
+}
+
+void GameFramework::UpdateImGui()
+{
+	// Start the Dear ImGui frame
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+	// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+	if (show_demo_window)
+		ImGui::ShowDemoWindow(&show_demo_window);
+
+	// 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+	{
+		static float f = 0.0f;
+		static int counter = 0;
+
+		ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+		ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+		ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+		ImGui::Checkbox("Another Window", &show_another_window);
+
+		ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+		ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+		if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+			counter++;
+		ImGui::SameLine();
+		ImGui::Text("counter = %d", counter);
+
+		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+		ImGui::End();
+	}
+
+	// 3. Show another simple window.
+	{
+		ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+		ImGui::Text("Hello from another window!");
+		if (ImGui::Button("Close Me"))
+			show_another_window = false;
+		ImGui::End();
+	}
 }
 
 void GameFramework::LoadTextures()
