@@ -210,6 +210,8 @@ bool GameFramework::Initialize()
 	// Wait until initialization is complete.
 	FlushCommandQueue();
 
+	// TODO: Release unused upload buffer
+
 	GLOBAL_TIMER.RecordElapsed(initTimePoint, GLOBAL_TIMER.Now());
 
 	return true;
@@ -470,6 +472,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		return 0;
 	}
 
+
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
@@ -488,6 +491,8 @@ ThrowIfFailed(CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&mdxgiF
 #else
 ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&mdxgiFactory)));
 #endif
+
+//mdxgiFactory->MakeWindowAssociation(mhMainWnd, DXGI_MWA_NO_ALT_ENTER);
 
 // Try to create hardware device.
 HRESULT hardwareResult = D3D12CreateDevice(
@@ -580,7 +585,7 @@ void GameFramework::CreateSwapChain()
 	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	sd.BufferCount = SwapChainBufferCount;
 	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+	sd.Flags = 0;
 	sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
 	sd.Scaling = DXGI_SCALING_STRETCH;
 
@@ -738,7 +743,7 @@ void GameFramework::OnResize()
 		SwapChainBufferCount,
 		mClientWidth, mClientHeight,
 		mBackBufferFormat,
-		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
+		0));
 
 	mCurrBackBuffer = 0;
 
