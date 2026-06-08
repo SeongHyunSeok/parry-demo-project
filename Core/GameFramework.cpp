@@ -216,6 +216,8 @@ bool GameFramework::Initialize()
 	// Wait until initialization is complete.
 	FlushCommandQueue();
 
+	// TODO: Release unused upload buffer
+
 	GLOBAL_TIMER.RecordElapsed(initTimePoint, GLOBAL_TIMER.Now());
 
 	return true;
@@ -479,6 +481,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		return 0;
 	}
 
+
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
@@ -497,6 +500,8 @@ ThrowIfFailed(CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&mdxgiF
 #else
 ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&mdxgiFactory)));
 #endif
+
+//mdxgiFactory->MakeWindowAssociation(mhMainWnd, DXGI_MWA_NO_ALT_ENTER);
 
 // Try to create hardware device.
 HRESULT hardwareResult = D3D12CreateDevice(
@@ -639,7 +644,7 @@ void GameFramework::CreateSwapChain()
 	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	sd.BufferCount = SwapChainBufferCount;
 	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+	sd.Flags = 0;
 	sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
 	sd.Scaling = DXGI_SCALING_STRETCH;
 
@@ -797,7 +802,7 @@ void GameFramework::OnResize()
 		SwapChainBufferCount,
 		mClientWidth, mClientHeight,
 		mBackBufferFormat,
-		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
+		0));
 
 	mCurrBackBuffer = 0;
 
@@ -966,7 +971,7 @@ void GameFramework::Update(float dt)
 		if (pComPlayerStateMachine->IsInValidFrame() && comEnemyStateMachine.GetCurrentSatateType() == StateType::Idle
 			|| comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack) {
 			XMINT3 hitDir = { 0, 0, 1 };
-			if (pComPlayerMesh->Translation.z > pComEnemyMesh->Translation.z)
+			if (pComPlayerMesh->Translation.z > pComEnemyMesh->Translation.z) // TO DO
 			{
 				hitDir.z = -1;
 			}
@@ -1017,6 +1022,17 @@ void GameFramework::Update(float dt)
 			GameEvent ge;
 			ge.eventType = GameEventType::Parried;
 			comEnemyStateMachine.HandleGameEvent(ge);
+		}
+	}
+	else if (distance < 3.0f && comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack && comEnemyStateMachine.IsInValidFrame()) {
+		if (pComPlayerStateMachine->GetCurrentSatateType() == StateType::Idle
+			|| pComPlayerStateMachine->GetCurrentSatateType() == StateType::Walk) {
+			XMINT3 hitDir = { 0, 0, 1 };
+			GameEvent ge;
+			ge.eventType = GameEventType::Hit;
+			ge.dir = hitDir;
+			ge.strength = 0.2f;
+			pComPlayerStateMachine->HandleGameEvent(ge);
 		}
 	}
 	//-----------------------
@@ -2234,17 +2250,16 @@ void GameFramework::LoadSkinnedModel()
 		{AnimationType::OneHandBaseShieldWalkBackward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B"}
 	};
 
-
 	std::unordered_map<AnimationType, AnimationSetInfo> animationSetInfos = {
-		{ AnimationType::OneHandBaseAttackTypeC_1,AnimationSetInfo(0.0, 1.0f)},
-		{ AnimationType::OneHandBaseAttackTypeC_2,AnimationSetInfo(0.0, 1.0f) },
-		{ AnimationType::OneHandBaseAttackTypeC_3,AnimationSetInfo(0.0, 1.0f) },
-		{ AnimationType::OneHandBaseAttackTypeC_4,AnimationSetInfo(0.0, 1.0f) },
-		{ AnimationType::OneHandBaseAttackTypeC_5,AnimationSetInfo(0.0, 1.0f) },
-		{ AnimationType::OneHandBaseAttackTypeC_6,AnimationSetInfo(0.0, 1.0f) },
-		{ AnimationType::OneHandBaseAttackTypeC_7,AnimationSetInfo(0.0, 1.0f) },
-		{ AnimationType::OneHandBaseAttackTypeC_8,AnimationSetInfo(0.0, 1.0f) },
-		{ AnimationType::OneHandBaseShieldParryType1,AnimationSetInfo(0.0, 1.0f) },
+		{ AnimationType::OneHandBaseAttackTypeC_1,AnimationSetInfo(0.333333f, 0.400000f)},
+		{ AnimationType::OneHandBaseAttackTypeC_2,AnimationSetInfo(0.400000f, 0.533333f) },
+		{ AnimationType::OneHandBaseAttackTypeC_3,AnimationSetInfo(0.233333f, 0.366667f) },
+		{ AnimationType::OneHandBaseAttackTypeC_4,AnimationSetInfo(0.433333f, 0.533333f) },
+		{ AnimationType::OneHandBaseAttackTypeC_5,AnimationSetInfo(0.466667f, 0.566667f) },
+		{ AnimationType::OneHandBaseAttackTypeC_6,AnimationSetInfo(0.766667f, 0.866667f) },
+		{ AnimationType::OneHandBaseAttackTypeC_7,AnimationSetInfo(0.366667f, 0.500000f) },
+		{ AnimationType::OneHandBaseAttackTypeC_8,AnimationSetInfo(0.500000f, 0.633333f) },
+		{ AnimationType::OneHandBaseShieldParryType1,AnimationSetInfo(0.333333f, 0.433333f) },
 	};
 
 	std::vector<AnimationType> changeEndTime = {
@@ -2263,6 +2278,7 @@ void GameFramework::LoadSkinnedModel()
 	animationSet->SetAnimationSetInfos(move(animationSetInfos));
 
 	for (auto& it : changeEndTime) {
+		animationSet->animationSets[it]->startTime = 0.200000f;
 		animationSet->animationSets[it]->endTime = animationSet->animationSets[it]->endTime / 2;
 	}
 	animationSet->animationSets[AnimationType::Parried]->startTime = 0.7f;

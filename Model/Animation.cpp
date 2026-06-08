@@ -142,7 +142,7 @@ void AnimationSet::Interpolate(
 		else {
 			XMStoreFloat4(&previousRotation, rotation);
 		}
-
+		
 		boneToParents[boneFrameIndex].translation = Vector3::Add(boneToParents[boneFrameIndex].translation, translationResult, totalWeight);
 
 		//XMMATRIX S = XMMatrixScaling(scaleResult.x, scaleResult.y, scaleResult.z);
