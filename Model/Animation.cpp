@@ -469,12 +469,12 @@ bool AnimationController::IsAnimationStarting()
 	return info.startingAnimation;
 }
 
-bool AnimationController::IsTimposInEffectiveFrame()
+bool AnimationController::IsTimposInEffectiveFrame(float offset)
 {
 	const AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
 	const AnimationSetInfo& setInfo = animationSets->animationSetInfos[playInfo.animationType];
 
-	if (setInfo.effectiveStartTimePos <= playInfo.timePosition && playInfo.timePosition <= setInfo.effectiveEndTimePos) {
+	if (setInfo.effectiveStartTimePos - offset <= playInfo.timePosition && playInfo.timePosition <= setInfo.effectiveEndTimePos + offset) {
 		return true;
 	}
 

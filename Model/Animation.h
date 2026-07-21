@@ -308,7 +308,7 @@ public:
 
 	bool IsAnimationEnd();
 	bool IsAnimationStarting();
-	bool IsTimposInEffectiveFrame();
+	bool IsTimposInEffectiveFrame(float offset);
 private:
 	void UpdateTimePosition(float elapsedTime);
 	void UpdateTimePosition(float elapsedTime, UINT playInfoIndex);

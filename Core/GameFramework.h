@@ -252,7 +252,7 @@ protected:
 
 	HINSTANCE mhAppInst = nullptr; // application instance handle
 	HWND      mhMainWnd = nullptr; // main window handle
-	bool      mAppPaused = false;  // is the application paused?
+	bool      mAppPaused = true;  // is the application paused?
 	bool      mMinimized = false;  // is the application minimized?
 	bool      mMaximized = false;  // is the application maximized?
 	bool      mResizing = false;   // are the resize bars being dragged?
@@ -369,8 +369,12 @@ private:
 
 	// imgui
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mImGuiSrvHeap;
-	// imgui test
-	bool show_demo_window = true;
-	bool show_another_window = false;
-	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+	float enemyAttackAnimationSpeed = 1.0f;
+	float parryJudgementFrameOffset = 0.0f;
+	bool playerNoHit = false;
+	bool showEnemyValidAttackFrame = false;
+	bool showPlayerValidParryFrame = false;
+
+	// temp
+	bool showStartMenu = true;
 };

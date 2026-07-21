@@ -49,7 +49,7 @@ public:
 	void SetOwnerAnimation(AnimationType animationType);
 	void SetOwnerAnimation(AnimationType animationType, float speed);
 	bool CheckAnimationEnd();
-	bool IsInValidFrame();
+	bool IsInValidFrame(float offset = 0.0f);
 	bool IsAnimationStarting();
 	bool CheckDistAndSetToFaceOpponent(Handle<GameObject> opponentHandle, float distThreshold);
 	StateType GetCurrentSatateType();

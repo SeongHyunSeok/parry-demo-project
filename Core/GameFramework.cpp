@@ -36,7 +36,7 @@ GameFramework::GameFramework(HINSTANCE hInstance) : mhAppInst(hInstance)
 	// the world space origin.  In general, you need to loop over every world space vertex
 	// position and compute the bounding sphere.
 	mSceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
-	mSceneBounds.Radius = sqrtf(10.0f * 10.0f + 15.0f * 15.0f);
+	mSceneBounds.Radius = sqrtf(50.0f * 50.0f + 50.0f * 50.0f);
 }
 
 GameFramework::~GameFramework()
@@ -296,7 +296,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		if (LOWORD(wParam) == WA_INACTIVE)
 		{
 			mAppPaused = true;
-			ClipCursor(nullptr);
+			//ClipCursor(nullptr);
 			ReleaseCapture();
 			mTimerView.SetTimeMultiplier(0.0);
 		}
@@ -306,7 +306,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 			RECT clientRect;
 			GetClientRect(mhMainWnd, &clientRect);
 			MapWindowPoints(mhMainWnd, NULL, (LPPOINT)(&clientRect), 2);
-			ClipCursor(&clientRect);
+			//ClipCursor(&clientRect);
 			SetCapture(mhMainWnd);
 			mTimerView.SetTimeMultiplier(1.0);
 		}
@@ -943,7 +943,7 @@ void GameFramework::Update(float dt)
 	// Animate the lights (and hence shadows).
 	//
 
-	mLightRotationAngle += 0.1f * dt;
+	mLightRotationAngle += 0.05f * dt;
 
 	XMMATRIX R = XMMatrixRotationY(mLightRotationAngle);
 	for (int i = 0; i < 3; ++i)
@@ -961,6 +961,30 @@ void GameFramework::Update(float dt)
 	auto& comEnemyStateMachine = (WORLD.GetComponents<StateMachineComponent>())[1];
 	auto pComEnemyMesh = WORLD.GetComponent<MeshComponent>(comEnemyStateMachine.GetOwner());
 
+	if (showEnemyValidAttackFrame && comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack) {
+		auto pComEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(comEnemyStateMachine.GetOwner());
+		Material* curMat = mMaterials["equipment2"].get();
+		if (comEnemyStateMachine.IsInValidFrame()) {
+			curMat = mMaterials["equipment3"].get();
+		}
+		if (pComEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) {
+			auto pComEnemySwordMesh = WORLD.GetComponent<MeshComponent>(*pComEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]);
+			pComEnemySwordMesh->drawItems.front().Mat = curMat;
+		}
+	}
+
+	if (showPlayerValidParryFrame && pComPlayerStateMachine->GetCurrentSatateType() == StateType::Parry) {
+		auto pComEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(pComPlayerStateMachine->GetOwner());
+		Material* curMat = mMaterials["equipment"].get();
+		if (pComPlayerStateMachine->IsInValidFrame(parryJudgementFrameOffset)) {
+			curMat = mMaterials["equipment4"].get();
+		}
+		if (pComEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
+			auto pComShieldMesh = WORLD.GetComponent<MeshComponent>(*pComEquipmentOwner->equipments[(UINT)EquipmentType::Shield]);
+			pComShieldMesh->drawItems.front().Mat = curMat;
+		}
+	}
+
 	XMVECTOR distVec = XMLoadFloat3(&pComEnemyMesh->Translation) - XMLoadFloat3(&pComPlayerMesh->Translation);
 	float distance = 0.0f;
 	XMStoreFloat(&distance, XMVector3Length(distVec));
@@ -968,8 +992,7 @@ void GameFramework::Update(float dt)
 	if (distance < 3.0f &&
 		pComPlayerStateMachine->GetCurrentSatateType() == StateType::Attack)
 	{
-		if (pComPlayerStateMachine->IsInValidFrame() && comEnemyStateMachine.GetCurrentSatateType() == StateType::Idle
-			|| comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack) {
+		if (pComPlayerStateMachine->IsInValidFrame() && comEnemyStateMachine.GetCurrentSatateType() == StateType::Idle) {
 			XMINT3 hitDir = { 0, 0, 1 };
 			if (pComPlayerMesh->Translation.z > pComEnemyMesh->Translation.z) // TO DO
 			{
@@ -979,7 +1002,7 @@ void GameFramework::Update(float dt)
 			GameEvent ge;
 			ge.eventType = GameEventType::Hit;
 			ge.dir = hitDir;
-			ge.strength = 0.5f;
+			ge.strength = 0.1f;
 			comEnemyStateMachine.HandleGameEvent(ge);
 		}
 		else if (comEnemyStateMachine.GetCurrentSatateType() == StateType::Parried
@@ -1015,7 +1038,7 @@ void GameFramework::Update(float dt)
 	}
 	else if (distance < 3.0f &&
 		pComPlayerStateMachine->GetCurrentSatateType() == StateType::Parry
-		&& pComPlayerStateMachine->IsInValidFrame())
+		&& pComPlayerStateMachine->IsInValidFrame(parryJudgementFrameOffset))
 	{
 		if (comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack
 			&& comEnemyStateMachine.IsInValidFrame()) {
@@ -1024,7 +1047,7 @@ void GameFramework::Update(float dt)
 			comEnemyStateMachine.HandleGameEvent(ge);
 		}
 	}
-	else if (distance < 3.0f && comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack && comEnemyStateMachine.IsInValidFrame()) {
+	else if (!playerNoHit && distance < 3.0f && comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack && comEnemyStateMachine.IsInValidFrame()) {
 		if (pComPlayerStateMachine->GetCurrentSatateType() == StateType::Idle
 			|| pComPlayerStateMachine->GetCurrentSatateType() == StateType::Walk) {
 			XMINT3 hitDir = { 0, 0, 1 };
@@ -1155,6 +1178,15 @@ void GameFramework::Draw(float dt)
 	skyTexDescriptor.Offset(skyComp.mSkyTexHeapIndex, mCbvSrvUavDescriptorSize);
 	mCommandList->SetGraphicsRootDescriptorTable(4, skyTexDescriptor);
 
+	// Debug
+	if (showStartMenu) {
+		mCommandList->SetPipelineState(mPSOs["startPage"].Get());
+		mCommandList->IASetVertexBuffers(0, 0, nullptr);
+		mCommandList->IASetIndexBuffer(nullptr);
+		mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		mCommandList->DrawInstanced(6, 1, 0, 0);
+	}
+
 	mCommandList->SetPipelineState(mPSOs["opaque"].Get());
 	DrawRenderItems(mCommandList.Get(), WORLD.GetComponents<NonAnimatedComponent>());
 
@@ -1216,6 +1248,13 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 {
 	using namespace physics;
 	auto& inputManager = InputManager::GetInstance();
+
+	if (showStartMenu) {
+		if (inputManager.IsPressed(VK_SPACE)) {
+			showStartMenu = false;
+		}
+		return;
+	}
 
 	// '[' key pressed
 	if (inputManager.IsJustReleased(VK_OEM_4))
@@ -1628,42 +1667,47 @@ void GameFramework::UpdateImGui()
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 
+	if (showStartMenu)
+		return;
+
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 
-	// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-	if (show_demo_window)
-		ImGui::ShowDemoWindow(&show_demo_window);
+	ImGui::Begin("Parry Simulation Setting"); // Create a window called "Hello, world!" and append into it.
 
-	// 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+	ImGui::SliderFloat("Enemy Animation Speed", &enemyAttackAnimationSpeed, 0.1f, 3.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+	ImGui::SliderFloat("Parry Judgement Frame Offset", &parryJudgementFrameOffset, -0.1f, 0.2f);
+	ImGui::Checkbox("Player No Hit", &playerNoHit);
+	ImGui::Checkbox("Show Enemy Valid Attack Frame", &showEnemyValidAttackFrame);
+	ImGui::Checkbox("Show Player Valid Parry Frame", &showPlayerValidParryFrame);
+
+	ImGui::SeparatorText("Attack Type(Preparing)");
+	static int e = 0;
+	ImGui::RadioButton("One Hand Sword", &e, 0); ImGui::SameLine();
+	ImGui::RadioButton("Two Hand Sword", &e, 1);
+
+	ImGui::SeparatorText("Game World Simulation");
+	static int clicked = 0;
+	if (ImGui::Button("Start"))
+		clicked++;
+	if (clicked & 1)
 	{
-		static float f = 0.0f;
-		static int counter = 0;
-
-		ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-		ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-		ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-		ImGui::Checkbox("Another Window", &show_another_window);
-
-		ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-		ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-		if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-			counter++;
 		ImGui::SameLine();
-		ImGui::Text("counter = %d", counter);
-
-		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-		ImGui::End();
+		ImGui::Text("Preparing...");
 	}
 
-	// 3. Show another simple window.
+	ImGui::End();
+
+	auto& comEnemyStateMachine = (WORLD.GetComponents<StateMachineComponent>())[1];
+	auto pComEnemyAni = WORLD.GetComponent<AnimationComponent>(comEnemyStateMachine.GetOwner());
 	{
-		ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-		ImGui::Text("Hello from another window!");
-		if (ImGui::Button("Close Me"))
-			show_another_window = false;
-		ImGui::End();
+		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_1, enemyAttackAnimationSpeed);
+		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_2, enemyAttackAnimationSpeed);
+		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_3, enemyAttackAnimationSpeed);
+		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_4, enemyAttackAnimationSpeed);
+		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_5, enemyAttackAnimationSpeed);
+		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_6, enemyAttackAnimationSpeed);
+		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_7, enemyAttackAnimationSpeed);
+		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_8, enemyAttackAnimationSpeed);
 	}
 }
 
@@ -1671,7 +1715,7 @@ void GameFramework::LoadTextures()
 {
 	std::vector<std::string> texNames =
 	{
-		"bricksDiffuseMap",
+		"startPageDiffuseMap",
 		"bricksNormalMap",
 		"tileDiffuseMap",
 		"tileNormalMap",
@@ -1682,7 +1726,7 @@ void GameFramework::LoadTextures()
 
 	std::vector<std::wstring> texFilenames =
 	{
-		L"Textures/bricks2.dds",
+		L"Textures/StartScreen.dds",
 		L"Textures/bricks2_nmap.dds",
 		L"Textures/tile.dds",
 		L"Textures/tile_nmap.dds",
@@ -1872,7 +1916,7 @@ void GameFramework::BuildDescriptorHeaps()
 
 	std::vector<ComPtr<ID3D12Resource>> tex2DList =
 	{
-		mTextures["bricksDiffuseMap"]->Resource,
+		mTextures["startPageDiffuseMap"]->Resource,
 		mTextures["bricksNormalMap"]->Resource,
 		mTextures["tileDiffuseMap"]->Resource,
 		mTextures["tileNormalMap"]->Resource,
@@ -2006,6 +2050,9 @@ void GameFramework::BuildShadersAndInputLayout()
 
 	mShaders["skyVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Sky.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["skyPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\Sky.hlsl", nullptr, "PS", "ps_5_1");
+
+	mShaders["startPageVS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawStartPage.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["startPagePS"] = d3dUtil::CompileShader(L"Core\\Shaders\\DrawStartPage.hlsl", nullptr, "PS", "ps_5_1");
 
 	mInputLayout =
 	{
@@ -2673,6 +2720,19 @@ void GameFramework::BuildPSOs()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
 
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC startPagePsoDesc = opaquePsoDesc;
+	startPagePsoDesc.pRootSignature = mRootSignature.Get();
+	startPagePsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["startPageVS"]->GetBufferPointer()),
+		mShaders["startPageVS"]->GetBufferSize()
+	};
+	startPagePsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["startPagePS"]->GetBufferPointer()),
+		mShaders["startPagePS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&startPagePsoDesc, IID_PPV_ARGS(&mPSOs["startPage"])));
 }
 
 void GameFramework::BuildFrameResources()
@@ -2766,6 +2826,27 @@ void GameFramework::BuildMaterials()
 	equipment2->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
 	equipment2->Roughness = 0.5f;
 	mMaterials["equipment2"] = std::move(equipment2);
+
+	auto equipment3 = std::make_unique<Material>();
+	equipment3->Name = "equipment3";
+	equipment3->MatCBIndex = matCBIndex++;
+	equipment3->DiffuseSrvHeapIndex = 4;
+	equipment3->NormalSrvHeapIndex = -1;
+	equipment3->DiffuseAlbedo = XMFLOAT4(1.0f, 0.85f, 0.85f, 1.0f);
+	equipment3->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
+	equipment3->Roughness = 0.5f;
+	mMaterials["equipment3"] = std::move(equipment3);
+
+
+	auto equipment4 = std::make_unique<Material>();
+	equipment4->Name = "equipment4";
+	equipment4->MatCBIndex = matCBIndex++;
+	equipment4->DiffuseSrvHeapIndex = 4;
+	equipment4->NormalSrvHeapIndex = -1;
+	equipment4->DiffuseAlbedo = XMFLOAT4(0.85f, 0.85f, 1.00f, 1.0f);
+	equipment4->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
+	equipment4->Roughness = 0.5f;
+	mMaterials["equipment4"] = std::move(equipment4);
 }
 
 void GameFramework::BuildRenderItems()
@@ -2804,14 +2885,14 @@ void GameFramework::BuildRenderItems()
 	StaticBody comQuadBody{ hQuadObj, bodyInterface, compoundShapeSettings.Create().Get(), Vec3::sZero(), Quat::sIdentity() };
 	WORLD.AttachComponent(hQuadObj, std::move(comQuadBody));
 
-	auto hBoxObj = WORLD.AddObject();
-	MeshComponent comBoxMesh(hBoxObj, objCBIndexCounter++,
-		XMFLOAT3(2.0f, 1.0f, 2.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.5f, 0.0f),
-		XMMatrixScaling(1.0f, 1.0f, 1.0f),
-		{ mGeometries["shapeGeo"].get() }, { "box" }, { mMaterials["bricks0"].get() }
-	);
-	WORLD.AttachComponent(hBoxObj, std::move(comBoxMesh));
-	WORLD.AttachComponent(hBoxObj, NonAnimatedComponent(hBoxObj));
+	//auto hBoxObj = WORLD.AddObject();
+	//MeshComponent comBoxMesh(hBoxObj, objCBIndexCounter++,
+	//	XMFLOAT3(2.0f, 1.0f, 2.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.5f, 0.0f),
+	//	XMMatrixScaling(1.0f, 1.0f, 1.0f),
+	//	{ mGeometries["shapeGeo"].get() }, { "box" }, { mMaterials["bricks0"].get() }
+	//);
+	//WORLD.AttachComponent(hBoxObj, std::move(comBoxMesh));
+	//WORLD.AttachComponent(hBoxObj, NonAnimatedComponent(hBoxObj));
 
 	auto hGridObj = WORLD.AddObject();
 	MeshComponent comGridMesh(hGridObj, objCBIndexCounter++,
@@ -2822,52 +2903,52 @@ void GameFramework::BuildRenderItems()
 	WORLD.AttachComponent(hGridObj, std::move(comGridMesh));
 	WORLD.AttachComponent(hGridObj, NonAnimatedComponent(hGridObj));
 
-	XMMATRIX brickTexTransform = XMMatrixScaling(1.5f, 2.0f, 1.0f);
-	for (int i = 0; i < 5; ++i)
-	{
-		auto hLeftCylObj = WORLD.AddObject();
-		auto hRightCylObj = WORLD.AddObject();
-		auto hLeftSphereObj = WORLD.AddObject();
-		auto hRightSphereObj = WORLD.AddObject();
+	//XMMATRIX brickTexTransform = XMMatrixScaling(1.5f, 2.0f, 1.0f);
+	//for (int i = 0; i < 5; ++i)
+	//{
+	//	auto hLeftCylObj = WORLD.AddObject();
+	//	auto hRightCylObj = WORLD.AddObject();
+	//	auto hLeftSphereObj = WORLD.AddObject();
+	//	auto hRightSphereObj = WORLD.AddObject();
 
-		XMFLOAT3 leftCylWorldTranslation = XMFLOAT3(-5.0f, 1.5f, -10.0f + i * 5.0f);
-		XMFLOAT3 rightCylWorldTranslation = XMFLOAT3(+5.0f, 1.5f, -10.0f + i * 5.0f);
+	//	XMFLOAT3 leftCylWorldTranslation = XMFLOAT3(-5.0f, 1.5f, -10.0f + i * 5.0f);
+	//	XMFLOAT3 rightCylWorldTranslation = XMFLOAT3(+5.0f, 1.5f, -10.0f + i * 5.0f);
 
-		XMFLOAT3 leftSphereWorldTranslation = XMFLOAT3(-5.0f, 3.5f, -10.0f + i * 5.0f);
-		XMFLOAT3 rightSphereWorldTranslation = XMFLOAT3(+5.0f, 3.5f, -10.0f + i * 5.0f);
+	//	XMFLOAT3 leftSphereWorldTranslation = XMFLOAT3(-5.0f, 3.5f, -10.0f + i * 5.0f);
+	//	XMFLOAT3 rightSphereWorldTranslation = XMFLOAT3(+5.0f, 3.5f, -10.0f + i * 5.0f);
 
-		MeshComponent comLeftCyleMesh(hLeftCylObj, objCBIndexCounter++,
-			XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftCylWorldTranslation,
-			brickTexTransform,
-			{ mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
-		);
-		WORLD.AttachComponent(hLeftCylObj, std::move(comLeftCyleMesh));
-		WORLD.AttachComponent(hLeftCylObj, NonAnimatedComponent(hLeftCylObj));
+	//	MeshComponent comLeftCyleMesh(hLeftCylObj, objCBIndexCounter++,
+	//		XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftCylWorldTranslation,
+	//		brickTexTransform,
+	//		{ mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
+	//	);
+	//	WORLD.AttachComponent(hLeftCylObj, std::move(comLeftCyleMesh));
+	//	WORLD.AttachComponent(hLeftCylObj, NonAnimatedComponent(hLeftCylObj));
 
-		MeshComponent comRightCyleMesh(hRightCylObj, objCBIndexCounter++,
-			XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightCylWorldTranslation,
-			brickTexTransform,
-			{ mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
-		);
-		WORLD.AttachComponent(hRightCylObj, std::move(comRightCyleMesh));
-		WORLD.AttachComponent(hRightCylObj, NonAnimatedComponent(hRightCylObj));
+	//	MeshComponent comRightCyleMesh(hRightCylObj, objCBIndexCounter++,
+	//		XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightCylWorldTranslation,
+	//		brickTexTransform,
+	//		{ mGeometries["shapeGeo"].get() }, { "cylinder" }, { mMaterials["bricks0"].get() }
+	//	);
+	//	WORLD.AttachComponent(hRightCylObj, std::move(comRightCyleMesh));
+	//	WORLD.AttachComponent(hRightCylObj, NonAnimatedComponent(hRightCylObj));
 
-		MeshComponent comLeftSphereMesh(hLeftCylObj, objCBIndexCounter++,
-			XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftSphereWorldTranslation,
-			XMMatrixIdentity(),
-			{ mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
-		);
-		WORLD.AttachComponent(hLeftSphereObj, std::move(comLeftSphereMesh));
-		WORLD.AttachComponent(hLeftSphereObj, NonAnimatedComponent(hLeftSphereObj));
+	//	MeshComponent comLeftSphereMesh(hLeftCylObj, objCBIndexCounter++,
+	//		XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), leftSphereWorldTranslation,
+	//		XMMatrixIdentity(),
+	//		{ mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
+	//	);
+	//	WORLD.AttachComponent(hLeftSphereObj, std::move(comLeftSphereMesh));
+	//	WORLD.AttachComponent(hLeftSphereObj, NonAnimatedComponent(hLeftSphereObj));
 
-		MeshComponent comRightSphereMesh(hLeftCylObj, objCBIndexCounter++,
-			XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightSphereWorldTranslation,
-			XMMatrixIdentity(),
-			{ mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
-		);
-		WORLD.AttachComponent(hRightSphereObj, std::move(comRightSphereMesh));
-		WORLD.AttachComponent(hRightSphereObj, NonAnimatedComponent(hRightSphereObj));
-	}
+	//	MeshComponent comRightSphereMesh(hLeftCylObj, objCBIndexCounter++,
+	//		XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f), rightSphereWorldTranslation,
+	//		XMMatrixIdentity(),
+	//		{ mGeometries["shapeGeo"].get() }, { "sphere" }, { mMaterials["mirror0"].get() }
+	//	);
+	//	WORLD.AttachComponent(hRightSphereObj, std::move(comRightSphereMesh));
+	//	WORLD.AttachComponent(hRightSphereObj, NonAnimatedComponent(hRightSphereObj));
+	//}
 
 	UINT skinnedCBIndexCounter = 0;
 	UINT equippedCBIndexCounter = 0;

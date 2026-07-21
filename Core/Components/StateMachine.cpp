@@ -87,12 +87,12 @@ bool StateMachineComponent::CheckAnimationEnd()
 	}
 }
 
-bool StateMachineComponent::IsInValidFrame()
+bool StateMachineComponent::IsInValidFrame(float offset)
 {
 	auto hOwner = GetOwner();
 	auto pComAni = WORLD.GetComponent<AnimationComponent>(hOwner);
 	if (pComAni) {
-		return pComAni->mSkinnedModelAnimationController->IsTimposInEffectiveFrame();
+		return pComAni->mSkinnedModelAnimationController->IsTimposInEffectiveFrame(offset);
 	}
 }
 

@@ -286,6 +286,9 @@
     <FxCompile Include="Core\Shaders\SsaoBlur.hlsl">
       <Filter>Core\Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Core\Shaders\DrawStartPage.hlsl">
+      <Filter>Core\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <Text Include="Models\car.txt">
