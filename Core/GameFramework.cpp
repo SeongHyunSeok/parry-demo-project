@@ -220,6 +220,8 @@ bool GameFramework::Initialize()
 
 	GLOBAL_TIMER.RecordElapsed(initTimePoint, GLOBAL_TIMER.Now());
 
+	while (ShowCursor(FALSE) >= 0);
+
 	return true;
 }
 
@@ -1303,6 +1305,10 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	}
 
 	if (inputManager.IsJustPressed(VK_CAPITAL)) {
+		if (inputManager.IsMouseLocked()) 
+			while (ShowCursor(TRUE) < 0);
+		else 
+			while (ShowCursor(FALSE) >= 0);
 		inputManager.LockMouse(!inputManager.IsMouseLocked());
 	}
 
@@ -1324,20 +1330,22 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {
 	const auto& inputManager = InputManager::GetInstance();
-	auto mouseMoveVec = inputManager.GetMouseMotionVec();
-	if (inputManager.IsPressed(VK_LBUTTON))
-	{
-		// Make each pixel correspond to a quarter of a degree.
-		float dx = XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
-		float dy = XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.y));
+	if (inputManager.IsMouseLocked()) {
+		auto mouseMoveVec = inputManager.GetMouseMotionVec();
+		if (inputManager.IsPressed(VK_LBUTTON))
+		{
+			// Make each pixel correspond to a quarter of a degree.
+			float dx = XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
+			float dy = XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.y));
 
-		camera.Pitch(dy);
-		camera.RotateY(dx);
+			camera.Pitch(dy);
+			camera.RotateY(dx);
+		}
+		auto& comPlayer = WORLD.GetComponents<PlayerComponent>().front();
+		auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(comPlayer.GetOwner());
+		pPlayerMesh->Rotation.y += XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
+		pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
 	}
-	auto& comPlayer = WORLD.GetComponents<PlayerComponent>().front();
-	auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(comPlayer.GetOwner());
-	pPlayerMesh->Rotation.y += XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
-	pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
 }
 
 void GameFramework::AnimateMaterials(float dt)
