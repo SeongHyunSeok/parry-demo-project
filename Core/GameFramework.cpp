@@ -1036,6 +1036,8 @@ void GameFramework::Update(float dt)
 			}
 
 			pComPlayerMesh->Rotation.y = yAngle;
+			directionlock = true;
+			directionlockTime += dt;
 		}
 	}
 	else if (distance < 3.0f &&
@@ -1079,6 +1081,13 @@ void GameFramework::Update(float dt)
 		}
 		else
 			mPlayerHitTime += dt;
+	}
+	if (directionlockTime > 0.0f && directionlock) {
+		directionlockTime += dt;
+		if (directionlockTime > 3.66f) {
+			directionlock = false;
+			directionlockTime = 0.0f;
+		}
 	}
 
 	//-----------------------
@@ -1317,7 +1326,7 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 		}
 	}
 
-	if (inputManager.IsJustPressed(VK_LBUTTON)) {
+	if (inputManager.IsJustPressed(VK_LBUTTON) && !directionlock) {
 		playerInput.type = InputType::Attack;
 	}
 
@@ -1351,7 +1360,7 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {
 	const auto& inputManager = InputManager::GetInstance();
-	if (inputManager.IsMouseLocked()) {
+	if (inputManager.IsMouseLocked()&&!directionlock) {
 		auto mouseMoveVec = inputManager.GetMouseMotionVec();
 		if (inputManager.IsPressed(VK_LBUTTON))
 		{

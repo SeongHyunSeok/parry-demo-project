@@ -381,4 +381,7 @@ private:
 	float mPlayerHitTime = 0.0f;
 	float rollJudgementFrameOffset = 0.0f;
 	bool showPlayerValidRollHit = true;
+
+	bool directionlock = false;
+	float directionlockTime = 0.0f;
 };
