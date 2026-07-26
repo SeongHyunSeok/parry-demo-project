@@ -1060,7 +1060,7 @@ void GameFramework::Update(float dt)
 			pComPlayerStateMachine->HandleGameEvent(ge);
 		}
 		else if (pComPlayerStateMachine->GetCurrentSatateType() == StateType::Roll
-			&& !pComPlayerStateMachine->IsInValidFrame()) {
+			&& !pComPlayerStateMachine->IsInValidFrame(rollJudgementFrameOffset) && showPlayerValidRollHit) {
 			mPlayerHitTime = dt;
 			Material* curMat = mMaterials["hit"].get();
 			pComPlayerMesh->drawItems.front().Mat = curMat;
@@ -1705,9 +1705,11 @@ void GameFramework::UpdateImGui()
 
 	ImGui::SliderFloat("Enemy Animation Speed", &enemyAttackAnimationSpeed, 0.1f, 3.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
 	ImGui::SliderFloat("Parry Judgement Frame Offset", &parryJudgementFrameOffset, -0.1f, 0.2f);
+	ImGui::SliderFloat("Roll Judgement Frame Offset", &rollJudgementFrameOffset, -0.2f, 1.4f);
 	ImGui::Checkbox("Player No Hit", &playerNoHit);
 	ImGui::Checkbox("Show Enemy Valid Attack Frame", &showEnemyValidAttackFrame);
 	ImGui::Checkbox("Show Player Valid Parry Frame", &showPlayerValidParryFrame);
+	ImGui::Checkbox("Show Player Valid Roll Hit", &showPlayerValidRollHit);
 
 	ImGui::SeparatorText("Attack Type(Preparing)");
 	static int e = 0;

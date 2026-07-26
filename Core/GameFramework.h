@@ -380,5 +380,5 @@ private:
 	bool showStartMenu = true;
 	float mPlayerHitTime = 0.0f;
 	float rollJudgementFrameOffset = 0.0f;
-	bool showPlayerValidRollHit = false;
+	bool showPlayerValidRollHit = true;
 };
