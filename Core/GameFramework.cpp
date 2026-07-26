@@ -1059,7 +1059,28 @@ void GameFramework::Update(float dt)
 			ge.strength = 0.2f;
 			pComPlayerStateMachine->HandleGameEvent(ge);
 		}
+		else if (pComPlayerStateMachine->GetCurrentSatateType() == StateType::Roll
+			&& !pComPlayerStateMachine->IsInValidFrame()) {
+			mPlayerHitTime = dt;
+			Material* curMat = mMaterials["hit"].get();
+			pComPlayerMesh->drawItems.front().Mat = curMat;
+			for (int i = 0; i < pComPlayerMesh->drawItems.size(); ++i)
+				pComPlayerMesh->drawItems[i].Mat = curMat;
+		}
+		
 	}
+	
+	if (mPlayerHitTime > 0.0f) {
+		if (mPlayerHitTime > 0.8f) {
+			Material* curMat = mMaterials[mSkinnedMats[0].Name].get();
+			for (int i = 0; i < pComPlayerMesh->drawItems.size(); ++i)
+				pComPlayerMesh->drawItems[i].Mat = curMat;
+			mPlayerHitTime = 0.0f;
+		}
+		else
+			mPlayerHitTime += dt;
+	}
+
 	//-----------------------
 
 	for (auto& it : WORLD.GetComponents<StateMachineComponent>())
@@ -2315,6 +2336,15 @@ void GameFramework::LoadSkinnedModel()
 		{ AnimationType::OneHandBaseAttackTypeC_7,AnimationSetInfo(0.366667f, 0.500000f) },
 		{ AnimationType::OneHandBaseAttackTypeC_8,AnimationSetInfo(0.500000f, 0.633333f) },
 		{ AnimationType::OneHandBaseShieldParryType1,AnimationSetInfo(0.333333f, 0.433333f) },
+		{ AnimationType::RollBackward,AnimationSetInfo(0.0f, 0.433333f) },
+		{ AnimationType::RollBackwardLeft45,AnimationSetInfo(0.0f, 0.433333f) },
+		{ AnimationType::RollBackwardRight45,AnimationSetInfo(0.0f, 0.433333f) },
+		{ AnimationType::RollForward,AnimationSetInfo(0.0f, 0.433333f) },
+		{ AnimationType::RollForwardLeft45,AnimationSetInfo(0.0f, 0.433333f) },
+		{ AnimationType::RollForwardRight45,AnimationSetInfo(0.0f, 0.433333f) },
+		{ AnimationType::RollLeft,AnimationSetInfo(0.0f, 0.433333f) },
+		{ AnimationType::RollRight,AnimationSetInfo(0.0f, 0.433333f) }
+
 	};
 
 	std::vector<AnimationType> changeEndTime = {
@@ -2855,6 +2885,17 @@ void GameFramework::BuildMaterials()
 	equipment4->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
 	equipment4->Roughness = 0.5f;
 	mMaterials["equipment4"] = std::move(equipment4);
+
+	auto hit = std::make_unique<Material>();
+	hit->Name = "hit";
+	hit->MatCBIndex = matCBIndex++;
+	hit->DiffuseSrvHeapIndex = 4;
+	hit->NormalSrvHeapIndex = -1;
+	hit->DiffuseAlbedo = XMFLOAT4(1.0f, 0.60f, 0.6f, 1.0f);
+	hit->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
+	hit->Roughness = 0.5f;
+
+	mMaterials["hit"] = std::move(hit);
 }
 
 void GameFramework::BuildRenderItems()

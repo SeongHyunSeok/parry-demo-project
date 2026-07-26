@@ -374,7 +374,11 @@ private:
 	bool playerNoHit = false;
 	bool showEnemyValidAttackFrame = false;
 	bool showPlayerValidParryFrame = false;
+	
 
 	// temp
 	bool showStartMenu = true;
+	float mPlayerHitTime = 0.0f;
+	float rollJudgementFrameOffset = 0.0f;
+	bool showPlayerValidRollHit = false;
 };
