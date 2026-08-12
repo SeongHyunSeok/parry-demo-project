@@ -178,9 +178,9 @@ void AnimationSets::generateAnimationSet(const std::unordered_map<AnimationType,
 	}
 }
 
-void AnimationSets::SetAnimationSetInfos(std::unordered_map<AnimationType, AnimationSetInfo>&& infos)
+void AnimationSets::SetAnimationEffectiveTimeInfos(const std::unordered_map<AnimationType, AnimationEffectiveTimeInfo>* infos)
 {
-	animationSetInfos = move(infos);
+	animationEffectiveTimeInfos = infos;
 }
 
 UINT AnimationSets::BoneCount()const
@@ -472,7 +472,7 @@ bool AnimationController::IsAnimationStarting()
 bool AnimationController::IsTimposInEffectiveFrame(float offset)
 {
 	const AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
-	const AnimationSetInfo& setInfo = animationSets->animationSetInfos[playInfo.animationType];
+	const AnimationEffectiveTimeInfo& setInfo = animationSets->animationEffectiveTimeInfos->at(playInfo.animationType);
 
 	if (setInfo.effectiveStartTimePos - offset <= playInfo.timePosition && playInfo.timePosition <= setInfo.effectiveEndTimePos + offset) {
 		return true;

@@ -179,6 +179,7 @@
     <ClCompile Include="Model\ModelLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Assets\Humanoid.h" />
     <ClInclude Include="Core\Camera.h" />
     <ClInclude Include="Core\component.h" />
     <ClInclude Include="Core\Components\Animation.h" />

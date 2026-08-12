@@ -34,6 +34,9 @@
     <Filter Include="Core\imgui">
       <UniqueIdentifier>{78a74ea5-c7e3-46eb-ae81-613d67c364fd}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Assets">
+      <UniqueIdentifier>{b604ceb7-1841-402f-a5a2-b523b44c89a9}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Demo.cpp">
@@ -256,6 +259,9 @@
     </ClInclude>
     <ClInclude Include="Core\SimpleDescriptorHeapAllocator.h">
       <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Assets\Humanoid.h">
+      <Filter>Assets</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

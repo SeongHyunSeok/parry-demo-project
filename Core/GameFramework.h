@@ -23,6 +23,7 @@
 #include "../Model/GeometryGenerator.h"
 #include "../Model/Animation.h"
 #include "../Model/ModelLoader.h"
+#include "../Assets/Humanoid.h"
 
 #include "physics.h"
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
@@ -142,7 +143,7 @@ private:
 		using namespace physics;
 		using namespace JPH;
 
-		MeshGeometry* const skinnedModelGeo = mGeometries[mSkinnedModelFilename].get();
+		MeshGeometry* const skinnedModelGeo = mGeometries[HumanoidAssets::AssetName].get();
 		int subMeshCounts = skinnedModelGeo->DrawArgs.size();
 		std::vector<MeshGeometry*> geometries(subMeshCounts, skinnedModelGeo);
 		std::vector<std::string> subMeshNames;
@@ -163,7 +164,7 @@ private:
 		AnimationComponent comAnimation{ handle };
 		comAnimation.SkinnedCBIndex = skinnedCBIndexCounter++;
 		comAnimation.mSkinnedModelAnimationController =
-			std::make_unique<AnimationController>(mSkinnedAnimationSets[mSkinnedModelFilename].get());
+			std::make_unique<AnimationController>(mSkinnedAnimationSets[HumanoidAssets::AssetName].get());
 		//comAnimation.mSkinnedModelAnimationController->SetAnimation(AnimationType::Idle);
 		WORLD.AttachComponent(handle, std::move(comAnimation));
 
@@ -334,7 +335,6 @@ private:
 
 	FbxBinLoader fbxBinLoader;
 	UINT mSkinnedSrvHeapStart = 0;
-	std::string mSkinnedModelFilename = "Models\\RPGModel.bin";
 	std::vector<std::string> mSkinnedTextureNames;
 	std::vector<MaterialInfo> mSkinnedMats;
 

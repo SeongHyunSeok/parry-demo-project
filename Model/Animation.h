@@ -84,6 +84,20 @@ public:
 	AnimationSet(float startTime, float endTime, std::string& name);
 	AnimationSet(float startTime, float endTime, std::string&& name);
 	~AnimationSet();
+	AnimationSet(AnimationSet&& other) {
+		this->name = move(other.name);
+		this->animationLayers = move(other.animationLayers);
+		startTime = other.startTime;
+		endTime = other.endTime;
+	}
+
+	AnimationSet& operator=(AnimationSet&& other) {
+		this->name = move(other.name);
+		this->animationLayers = move(other.animationLayers);
+		startTime = other.startTime;
+		endTime = other.endTime;
+		return *this;
+	}
 
 public:
 	std::string name;
@@ -186,10 +200,10 @@ enum class AnimationType : UINT {
 	TwoHandTemp,
 };
 
-struct AnimationSetInfo
+struct AnimationEffectiveTimeInfo
 {
-	AnimationSetInfo() {}
-	AnimationSetInfo(float effectiveStartPos, float effectiveEndPos) 
+	AnimationEffectiveTimeInfo() {}
+	AnimationEffectiveTimeInfo(float effectiveStartPos, float effectiveEndPos) 
 		: effectiveStartTimePos(effectiveStartPos), effectiveEndTimePos(effectiveEndPos) {}
 
 	float effectiveStartTimePos = 0.0f;
@@ -216,7 +230,7 @@ public:
 	std::unordered_map<AnimationType, AnimationSet*> animationSets;
 	std::vector<int> boneHierarchy;
 	std::vector<DirectX::XMFLOAT4X4> boneOffsets;
-	std::unordered_map<AnimationType, AnimationSetInfo> animationSetInfos;
+	const std::unordered_map<AnimationType, AnimationEffectiveTimeInfo>* animationEffectiveTimeInfos;
 	std::unordered_map<EquipmentType, EquipmentLocation> equipmentLocations;
 	std::unordered_map<std::string, AnimationSet> rawAnimationSets;
 public:
@@ -238,7 +252,7 @@ public:
 		float blendingWeight,
 		AnimationPlayInfo* blendingTargetPlayInfo = nullptr)const;
 
-	void SetAnimationSetInfos(std::unordered_map<AnimationType, AnimationSetInfo>&& infos);
+	void SetAnimationEffectiveTimeInfos(const std::unordered_map<AnimationType, AnimationEffectiveTimeInfo>* infos);
 };
 
 enum class AnimationPlayType : int {
