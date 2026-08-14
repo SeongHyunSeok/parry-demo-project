@@ -52,8 +52,7 @@ namespace HumanoidAssets
 		{ AnimationType::OneHandBaseAttackTypeC_4,"Skeleton|OneHand_Base_Attack_C_4" },
 		{ AnimationType::OneHandBaseAttackTypeC_5,"Skeleton|OneHand_Base_Attack_C_5" },
 		{ AnimationType::OneHandBaseAttackTypeC_6,"Skeleton|OneHand_Base_Attack_C_6" },
-		{ AnimationType::OneHandBaseAttackTypeC_7,"Skeleton|OneHand_Base_Attack_C_7" },
-		{ AnimationType::OneHandBaseAttackTypeC_8,"Skeleton|OneHand_Base_Attack_C_8" },
+		{ AnimationType::OneHandBaseAttackTypeC_7,"Skeleton|OneHand_Base_Attack_C_8" },
 		// Parried
 		{ AnimationType::Parried,"Skeleton|Action_A_1" },
 		// OneHandBaseFatal
@@ -132,8 +131,7 @@ namespace HumanoidAssets
 		{ AnimationType::OneHandBaseAttackTypeC_4,AnimationEffectiveTimeInfo(0.433333f, 0.533333f) },
 		{ AnimationType::OneHandBaseAttackTypeC_5,AnimationEffectiveTimeInfo(0.466667f, 0.566667f) },
 		{ AnimationType::OneHandBaseAttackTypeC_6,AnimationEffectiveTimeInfo(0.766667f, 0.866667f) },
-		{ AnimationType::OneHandBaseAttackTypeC_7,AnimationEffectiveTimeInfo(0.366667f, 0.500000f) },
-		{ AnimationType::OneHandBaseAttackTypeC_8,AnimationEffectiveTimeInfo(0.500000f, 0.633333f) },
+		{ AnimationType::OneHandBaseAttackTypeC_7,AnimationEffectiveTimeInfo(0.500000f, 0.633333f) },
 		{ AnimationType::OneHandBaseShieldParryType1,AnimationEffectiveTimeInfo(0.333333f, 0.433333f) },
 		{ AnimationType::RollBackward,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
 		{ AnimationType::RollBackwardLeft45,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },

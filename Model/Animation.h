@@ -175,7 +175,6 @@ enum class AnimationType : UINT {
 	OneHandBaseAttackTypeC_5,
 	OneHandBaseAttackTypeC_6,
 	OneHandBaseAttackTypeC_7,
-	OneHandBaseAttackTypeC_8,
 	// OneHandBaseFatal
 	OneHandBaseFatalAttack,
 	OneHandBaseFatalHit,

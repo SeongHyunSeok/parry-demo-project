@@ -141,7 +141,7 @@ public:
 	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
 protected:
-	const unsigned int MAX_COMBO_COUNT = 8;
+	const unsigned int MAX_COMBO_COUNT = 7;
 	unsigned int currentComboCount = 0;
 	bool doNextCombo = false;
 	bool fatalAttack = false;

@@ -1747,7 +1747,6 @@ void GameFramework::UpdateImGui()
 		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_5, enemyAttackAnimationSpeed);
 		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_6, enemyAttackAnimationSpeed);
 		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_7, enemyAttackAnimationSpeed);
-		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_8, enemyAttackAnimationSpeed);
 	}
 }
 
@@ -2294,7 +2293,6 @@ void GameFramework::LoadSkinnedModel()
 		AnimationType::OneHandBaseAttackTypeC_5,
 		AnimationType::OneHandBaseAttackTypeC_6,
 		AnimationType::OneHandBaseAttackTypeC_7,
-		AnimationType::OneHandBaseAttackTypeC_8
 	};
 
 	auto animationSet = mSkinnedAnimationSets[HumanoidAssets::AssetName].get();
