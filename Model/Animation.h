@@ -196,8 +196,54 @@ enum class AnimationType : UINT {
 	OneHandBaseShieldWalkBackward,
 	OneHandBaseShieldWalkBackwardLeft45,
 	OneHandBaseShieldWalkBackwardRight45,
-	// TwoHandBase
-	TwoHandTemp,
+	// TwoHandIdle
+	TwoHandIdle,
+	// TwoHandWalk
+	TwoHandWalkForward,
+	TwoHandWalkForwardLeft45,
+	TwoHandWalkForwardRight45,
+	TwoHandWalkLeft,
+	TwoHandWalkRight,
+	TwoHandWalkBackward,
+	TwoHandWalkBackwardLeft45,
+	TwoHandWalkBackwardRight45,
+	// TwoHandRoll
+	TwoHandRollForward,
+	TwoHandRollForwardLeft45,
+	TwoHandRollForwardRight45,
+	TwoHandRollLeft,
+	TwoHandRollRight,
+	TwoHandRollBackward,
+	TwoHandRollBackwardLeft45,
+	TwoHandRollBackwardRight45,
+	// TwoHandBaseAttack
+	TwoHandBaseAttackTypeB_1,
+	TwoHandBaseAttackTypeB_2,
+	TwoHandBaseAttackTypeB_3,
+	// TwoHandBlockHit
+	TwoHandBlockHit,
+	// TwoHandBlock
+	TwoHandBlockIdle,
+	TwoHandBlockWalkForward,
+	TwoHandBlockWalkForwardLeft45,
+	TwoHandBlockWalkForwardRight45,
+	TwoHandBlockWalkLeft,
+	TwoHandBlockWalkRight,
+	TwoHandBlockWalkBackward,
+	TwoHandBlockWalkBackwardLeft45,
+	TwoHandBlockWalkBackwardRight45,
+	// TwoHandBaseFatal
+	TwoHandBaseFatalAttack,
+	TwoHandBaseFatalHit,
+	// EnemyAttack
+	EnemyAttackType_1,
+	EnemyAttackType_2,
+	EnemyAttackType_3,
+	EnemyAttackType_1_Offbeat,
+	EnemyAttackType_2_Offbeat,
+	EnemyAttackType_3_Offbeat,
+
+
 };
 
 struct AnimationEffectiveTimeInfo

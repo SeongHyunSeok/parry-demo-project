@@ -149,7 +149,7 @@ AnimationType PlayerIdleState::GetAnimationType(StateMachineComponent* pStateMac
 		if (comEquipmentOwner
 			&& comEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
 			if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
-				return AnimationType::TwoHandTemp;
+				return AnimationType::TwoHandIdle;
 			}
 			else {
 				return AnimationType::OneHandBaseShieldIdle;
@@ -268,7 +268,7 @@ AnimationType PlayerWalkState::GetAnimationType(StateMachineComponent* pStateMac
 		if (comEquipmentOwner
 			&& comEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
 			if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
-				return AnimationType::TwoHandTemp;
+				return AnimationType::TwoHandIdle;
 			}
 			else {
 				AnimationType animationType = AnimationType::OneHandBaseShieldWalkForward;
@@ -460,9 +460,9 @@ AnimationType PlayerAttackState::GetAnimationType(StateMachineComponent* pStateM
 		if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) 
 		{
 			if (fatalAttack) {
-				return AnimationType::TwoHandTemp;
+				return AnimationType::TwoHandIdle;
 			}
-			return AnimationType::TwoHandTemp;
+			return AnimationType::TwoHandIdle;
 		}
 		else if (comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) 
 		{

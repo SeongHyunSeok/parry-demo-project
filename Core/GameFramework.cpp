@@ -2305,6 +2305,12 @@ void GameFramework::LoadSkinnedModel()
 		animationSet->animationSets[it]->startTime = 0.200000f;
 		animationSet->animationSets[it]->endTime = animationSet->animationSets[it]->endTime / 2;
 	}
+	animationSet->animationSets[AnimationType::TwoHandBaseAttackTypeB_1]->endTime = 1.166667f;
+	animationSet->animationSets[AnimationType::TwoHandBaseAttackTypeB_2]->startTime = 0.300000f;
+	animationSet->animationSets[AnimationType::TwoHandBaseAttackTypeB_2]->endTime = 0.933333f;
+	animationSet->animationSets[AnimationType::TwoHandBaseAttackTypeB_3]->startTime = 0.300000f;
+
+
 	animationSet->animationSets[AnimationType::Parried]->startTime = 0.7f;
 	animationSet->animationSets[AnimationType::Parried]->endTime = 1.2f;
 
@@ -2312,6 +2318,7 @@ void GameFramework::LoadSkinnedModel()
 	animationSet->equipmentLocations[EquipmentType::OneHandSword] = EquipmentLocation(
 		37, XMMatrixTranslation(-2.0f, -0.5f, -7.0f) * XMMatrixRotationQuaternion(quat)
 	);
+	
 	animationSet->equipmentLocations[EquipmentType::Shield] = EquipmentLocation(
 		12, XMMatrixScaling(0.7f, 0.7f, 0.7f) * XMMatrixRotationZ(-45.0f) * XMMatrixRotationY(-90.0f)
 		* XMMatrixTranslation(-3.0f, 10.0f, 0.0f)

@@ -11,7 +11,8 @@ namespace HumanoidAssets
 	const std::string BaseModelFileName = "Models\\HumanoidBaseModel.bin";
 
 	const std::string AnimationFileNames[] = {
-		"Models\\HumanoidOneHandAnimation.bin"
+		"Models\\HumanoidOneHandAnimation.bin",
+		"Models\\test.bin"
 	};
 
 	const std::unordered_map<AnimationType, std::string> MoveTypeToName =
@@ -74,7 +75,54 @@ namespace HumanoidAssets
 		{AnimationType::OneHandBaseShieldWalkBackwardLeft45,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B_L45"},
 		{AnimationType::OneHandBaseShieldWalkRight,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_R90_A"},
 		{AnimationType::OneHandBaseShieldWalkLeft,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_F_L90_A"},
-		{AnimationType::OneHandBaseShieldWalkBackward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B"}
+		{AnimationType::OneHandBaseShieldWalkBackward,"Skeleton|OneHand_Base_Shield_Walk_Slow_A_B"},
+		// TwoHandIdle
+		{ AnimationType::TwoHandIdle,"Skeleton|2Hand_Up_Idle_A_2" },
+		// TwoHandWalk
+		{ AnimationType::TwoHandWalkForward,"Skeleton|2Hand_Up_Walk_A_F" },
+		{ AnimationType::TwoHandWalkForwardLeft45,"Skeleton|2Hand_Up_Walk_A_F_L45" },
+		{ AnimationType::TwoHandWalkForwardRight45,"Skeleton|2Hand_Up_Walk_A_F_R45" },
+		{ AnimationType::TwoHandWalkBackward,"Skeleton|2Hand_Up_Walk_A_B" },
+		{ AnimationType::TwoHandWalkBackwardLeft45,"Skeleton|2Hand_Up_Walk_A_B_L45" },
+		{ AnimationType::TwoHandWalkBackwardRight45,"Skeleton|2Hand_Up_Walk_A_B_R45" },
+		{ AnimationType::TwoHandWalkLeft,"Skeleton|2Hand_Up_Walk_A_F_L90_A" },
+		{ AnimationType::TwoHandWalkRight,"Skeleton|2Hand_Up_Walk_A_F_R90_A" },
+		// TwoHandRoll
+		{ AnimationType::TwoHandRollBackward,"Skeleton|2Hand_Up_Roll_B" },
+		{ AnimationType::TwoHandRollBackwardLeft45,"Skeleton|2Hand_Up_Roll_B_L45" },
+		{ AnimationType::TwoHandRollBackwardRight45,"Skeleton|2Hand_Up_Roll_B_R45" },
+		{ AnimationType::TwoHandRollForward,"Skeleton|2Hand_Up_Roll_F" },
+		{ AnimationType::TwoHandRollForwardLeft45,"Skeleton|2Hand_Up_Roll_F_L45" },
+		{ AnimationType::TwoHandRollForwardRight45,"Skeleton|2Hand_Up_Roll_F_R45" },
+		{ AnimationType::TwoHandRollLeft,"Skeleton|2Hand_Up_Roll_F_L90" },
+		{ AnimationType::TwoHandRollRight,"Skeleton|2Hand_Up_Roll_F_R90" },
+		// TwoHandBaseAttack
+		{ AnimationType::TwoHandBaseAttackTypeB_1,"Skeleton|2Hand_Up_Attack_B_1" },
+		{ AnimationType::TwoHandBaseAttackTypeB_2,"Skeleton|2Hand_Up_Attack_B_2" },
+		{ AnimationType::TwoHandBaseAttackTypeB_3,"Skeleton|2Hand_Up_Attack_B_3" },
+		// TwoHandBlockHit
+		{ AnimationType::TwoHandBlockHit,"Skeleton|2Hand_Up_Block_Hit_1" },
+		// TwoHandBlock
+		{ AnimationType::TwoHandBlockIdle,"Skeleton|2Hand_Up_Block_Idle" },
+		{ AnimationType::TwoHandBlockWalkForward,"Skeleton|2Hand_Up_Block_Walk_Slow_F" },
+		{ AnimationType::TwoHandBlockWalkForwardLeft45,"Skeleton|2Hand_Up_Block_Walk_Slow_F_L45" },
+		{ AnimationType::TwoHandBlockWalkForwardRight45,"Skeleton|2Hand_Up_Block_Walk_Slow_F_R45" },
+		{ AnimationType::TwoHandBlockWalkBackward,"Skeleton|2Hand_Up_Block_Walk_Slow_B" },
+		{ AnimationType::TwoHandBlockWalkBackwardLeft45,"Skeleton|2Hand_Up_Block_Walk_Slow_B_L45" },
+		{ AnimationType::TwoHandBlockWalkBackwardRight45,"Skeleton|2Hand_Up_Block_Walk_Slow_B_R45" },
+		{ AnimationType::TwoHandBlockWalkLeft,"Skeleton|2Hand_Up_Block_Walk_Slow_F_L90_A" },
+		{ AnimationType::TwoHandBlockWalkRight,"Skeleton|2Hand_Up_Block_Walk_Slow_F_R90_A" },
+		// TwoHandBaseFatal
+		{ AnimationType::TwoHandBaseFatalAttack,"Skeleton|2Hand_Up_Fatal_Attack_1" },
+		{ AnimationType::TwoHandBaseFatalHit,"Skeleton|2Hand_Up_Fatal_Hit_1" },
+		// EnemyAttack
+		{ AnimationType::EnemyAttackType_1,"Skeleton|Enemy_Attack_1" },
+		{ AnimationType::EnemyAttackType_2,"Skeleton|Enemy_Attack_2" },
+		{ AnimationType::EnemyAttackType_3,"Skeleton|Enemy_Attack_3_1" },
+		{ AnimationType::EnemyAttackType_1_Offbeat,"Skeleton|Enemy_Attack_1_OffBeat" },
+		{ AnimationType::EnemyAttackType_2_Offbeat,"Skeleton|Enemy_Attack_2_OffBeat" },
+		{ AnimationType::EnemyAttackType_3_Offbeat,"Skeleton|Enemy_Attack_3_1_OffBeat" },
+
 	};
 
 	const std::unordered_map<AnimationType, AnimationEffectiveTimeInfo> AnimationEffectiveTimeInfos = {
@@ -94,6 +142,25 @@ namespace HumanoidAssets
 		{ AnimationType::RollForwardLeft45,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
 		{ AnimationType::RollForwardRight45,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
 		{ AnimationType::RollLeft,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
-		{ AnimationType::RollRight,AnimationEffectiveTimeInfo(0.0f, 0.433333f) }
+		{ AnimationType::RollRight,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+
+		{ AnimationType::TwoHandBaseAttackTypeB_1, AnimationEffectiveTimeInfo(0.733333f, 0.866667f) },
+		{ AnimationType::TwoHandBaseAttackTypeB_2, AnimationEffectiveTimeInfo(0.566667f, 0.700000f) },
+		{ AnimationType::TwoHandBaseAttackTypeB_3, AnimationEffectiveTimeInfo(0.766667f, 0.900000f) },
+		{ AnimationType::TwoHandRollBackward, AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+		{ AnimationType::TwoHandRollBackwardLeft45, AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+		{ AnimationType::TwoHandRollBackwardRight45, AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+		{ AnimationType::TwoHandRollForward, AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+		{ AnimationType::TwoHandRollForwardLeft45, AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+		{ AnimationType::TwoHandRollForwardRight45, AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+		{ AnimationType::TwoHandRollLeft, AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+		{ AnimationType::TwoHandRollRight, AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
+
+		{ AnimationType::EnemyAttackType_1, AnimationEffectiveTimeInfo(0.466667f, 0.600000f) },
+		{ AnimationType::EnemyAttackType_1_Offbeat, AnimationEffectiveTimeInfo(0.766667f, 0.900000f) },
+		{ AnimationType::EnemyAttackType_2, AnimationEffectiveTimeInfo(0.433333f, 0.566667f) },
+		{ AnimationType::EnemyAttackType_2_Offbeat, AnimationEffectiveTimeInfo(0.600000f, 0.733333f) },
+		{ AnimationType::EnemyAttackType_3, AnimationEffectiveTimeInfo(0.733333f, 0.866667f) },
+		{ AnimationType::EnemyAttackType_3_Offbeat, AnimationEffectiveTimeInfo(1.066667f, 1.200000f) },
 	};
 }
