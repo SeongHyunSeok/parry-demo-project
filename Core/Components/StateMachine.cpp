@@ -143,18 +143,17 @@ StateType StateMachineComponent::GetCurrentSatateType()
 
 
 AnimationType PlayerIdleState::GetAnimationType(StateMachineComponent* pStateMachine) {
-	if (shield) {
-		auto hOwner = pStateMachine->GetOwner();
-		const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
-		if (comEquipmentOwner
-			&& comEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
-			if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
-				return AnimationType::TwoHandIdle;
-			}
-			else {
-				return AnimationType::OneHandBaseShieldIdle;
-			}
-		}
+	auto hOwner = pStateMachine->GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+	if (comEquipmentOwner
+		&& comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		if (shield)
+			return AnimationType::TwoHandBlockIdle;
+		return AnimationType::TwoHandIdle;
+	}	
+	else if (shield && comEquipmentOwner
+		&& comEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
+			return AnimationType::OneHandBaseShieldIdle;
 	}
 
 	return AnimationType::Idle;
@@ -162,9 +161,18 @@ AnimationType PlayerIdleState::GetAnimationType(StateMachineComponent* pStateMac
 
 void PlayerIdleState::Enter(StateMachineComponent* pStateMachine, StateProperty stateProperty)
 {
+	
 	shield = stateProperty.shield;
 	shieldInputIn = stateProperty.shield;
 	
+	auto hOwner = pStateMachine->GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+	if (comEquipmentOwner
+		&& comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		pStateMachine->SetOwnerAnimation(AnimationType::TwoHandIdle);
+		return;
+	}
+
 	AnimationType aniType = GetAnimationType(pStateMachine);
 	pStateMachine->SetOwnerAnimation(aniType);
 }
@@ -262,46 +270,98 @@ void PlayerWalkState::HandleEvent(StateMachineComponent* pStateMachine, GameEven
 
 AnimationType PlayerWalkState::GetAnimationType(StateMachineComponent* pStateMachine)
 {
-	if (shield) {
-		auto hOwner = pStateMachine->GetOwner();
-		const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
-		if (comEquipmentOwner
-			&& comEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
-			if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
-				return AnimationType::TwoHandIdle;
+	auto hOwner = pStateMachine->GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+
+	AnimationType animationType;
+	if (shield && comEquipmentOwner) {
+		if (comEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
+			animationType = AnimationType::OneHandBaseShieldWalkForward;
+			if (direction.x == 1 && direction.z == 1) {
+				animationType = AnimationType::OneHandBaseShieldWalkForwardRight45;
 			}
-			else {
-				AnimationType animationType = AnimationType::OneHandBaseShieldWalkForward;
-				if (direction.x == 1 && direction.z == 1) {
-					animationType = AnimationType::OneHandBaseShieldWalkForwardRight45;
-				}
-				else if (direction.x == -1 && direction.z == 1) {
-					animationType = AnimationType::OneHandBaseShieldWalkForwardLeft45;
-				}
-				else if (direction.x == 1 && direction.z == -1) {
-					animationType = AnimationType::OneHandBaseShieldWalkBackwardRight45;
-				}
-				else if (direction.x == -1 && direction.z == -1) {
-					animationType = AnimationType::OneHandBaseShieldWalkBackwardLeft45;
-				}
-				else if (direction.x == 1) {
-					animationType = AnimationType::OneHandBaseShieldWalkRight;
-				}
-				else if (direction.x == -1) {
-					animationType = AnimationType::OneHandBaseShieldWalkLeft;
-				}
-				else if (direction.z == 1) {
-					animationType = AnimationType::OneHandBaseShieldWalkForward;
-				}
-				else if (direction.z == -1) {
-					animationType = AnimationType::OneHandBaseShieldWalkBackward;
-				}
-				return animationType;
+			else if (direction.x == -1 && direction.z == 1) {
+				animationType = AnimationType::OneHandBaseShieldWalkForwardLeft45;
 			}
+			else if (direction.x == 1 && direction.z == -1) {
+				animationType = AnimationType::OneHandBaseShieldWalkBackwardRight45;
+			}
+			else if (direction.x == -1 && direction.z == -1) {
+				animationType = AnimationType::OneHandBaseShieldWalkBackwardLeft45;
+			}
+			else if (direction.x == 1) {
+				animationType = AnimationType::OneHandBaseShieldWalkRight;
+			}
+			else if (direction.x == -1) {
+				animationType = AnimationType::OneHandBaseShieldWalkLeft;
+			}
+			else if (direction.z == 1) {
+				animationType = AnimationType::OneHandBaseShieldWalkForward;
+			}
+			else if (direction.z == -1) {
+				animationType = AnimationType::OneHandBaseShieldWalkBackward;
+			}
+			return animationType;
+		}
+		else if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+			animationType = AnimationType::TwoHandBlockWalkForward;
+			if (direction.x == 1 && direction.z == 1) {
+				animationType = AnimationType::TwoHandBlockWalkForwardRight45;
+			}
+			else if (direction.x == -1 && direction.z == 1) {
+				animationType = AnimationType::TwoHandBlockWalkForwardLeft45;
+			}
+			else if (direction.x == 1 && direction.z == -1) {
+				animationType = AnimationType::TwoHandBlockWalkBackwardRight45;
+			}
+			else if (direction.x == -1 && direction.z == -1) {
+				animationType = AnimationType::TwoHandBlockWalkBackwardLeft45;
+			}
+			else if (direction.x == 1) {
+				animationType = AnimationType::TwoHandBlockWalkRight;
+			}
+			else if (direction.x == -1) {
+				animationType = AnimationType::TwoHandBlockWalkLeft;
+			}
+			else if (direction.z == 1) {
+				animationType = AnimationType::TwoHandBlockWalkForward;
+			}
+			else if (direction.z == -1) {
+				animationType = AnimationType::TwoHandBlockWalkBackward;
+			}
+			return animationType;
 		}
 	}
-
-	AnimationType animationType = AnimationType::WalkForward;
+	if (comEquipmentOwner
+		&& comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		animationType = AnimationType::TwoHandWalkForward;
+		if (direction.x == 1 && direction.z == 1) {
+			animationType = AnimationType::TwoHandWalkForwardRight45;
+		}
+		else if (direction.x == -1 && direction.z == 1) {
+			animationType = AnimationType::TwoHandWalkForwardLeft45;
+		}
+		else if (direction.x == 1 && direction.z == -1) {
+			animationType = AnimationType::TwoHandWalkBackwardRight45;
+		}
+		else if (direction.x == -1 && direction.z == -1) {
+			animationType = AnimationType::TwoHandWalkBackwardLeft45;
+		}
+		else if (direction.x == 1) {
+			animationType = AnimationType::TwoHandWalkRight;
+		}
+		else if (direction.x == -1) {
+			animationType = AnimationType::TwoHandWalkLeft;
+		}
+		else if (direction.z == 1) {
+			animationType = AnimationType::TwoHandWalkForward;
+		}
+		else if (direction.z == -1) {
+			animationType = AnimationType::TwoHandWalkBackward;
+		}
+		return animationType;
+	}
+	animationType = AnimationType::WalkForward;
 	if (direction.x == 1 && direction.z == 1) {
 		animationType = AnimationType::WalkForwardRight45;
 	}
@@ -329,8 +389,18 @@ AnimationType PlayerWalkState::GetAnimationType(StateMachineComponent* pStateMac
 	return animationType;
 }
 
+
 void PlayerRollState::Enter(StateMachineComponent* pStateMachine, StateProperty property)
 {
+	auto hOwner = pStateMachine->GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+	if (comEquipmentOwner
+		&& comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		twoHand = true;
+	}
+	else {
+		twoHand = false;
+	}
 	direction = property.dir;
 
 	// TO DO : change speed by status
@@ -363,30 +433,61 @@ void PlayerRollState::HandleEvent(StateMachineComponent* pStateMachine, GameEven
 
 AnimationType PlayerRollState::GetAnimationType()
 {
-	AnimationType animationType = AnimationType::RollForward;
-	if (direction.x == 1 && direction.z == 1) {
-		animationType = AnimationType::RollForwardRight45;
+	
+	AnimationType animationType;
+	if (twoHand) {
+		animationType = AnimationType::TwoHandRollForward;
+		if (direction.x == 1 && direction.z == 1) {
+			animationType = AnimationType::TwoHandRollForwardRight45;
+		}
+		else if (direction.x == -1 && direction.z == 1) {
+			animationType = AnimationType::TwoHandRollForwardLeft45;
+		}
+		else if (direction.x == 1 && direction.z == -1) {
+			animationType = AnimationType::TwoHandRollBackwardRight45;
+		}
+		else if (direction.x == -1 && direction.z == -1) {
+			animationType = AnimationType::TwoHandRollBackwardLeft45;
+		}
+		else if (direction.x == 1) {
+			animationType = AnimationType::TwoHandRollRight;
+		}
+		else if (direction.x == -1) {
+			animationType = AnimationType::TwoHandRollLeft;
+		}
+		else if (direction.z == 1) {
+			animationType = AnimationType::TwoHandRollForward;
+		}
+		else if (direction.z == -1) {
+			animationType = AnimationType::TwoHandRollBackward;
+		}
 	}
-	else if (direction.x == -1 && direction.z == 1) {
-		animationType = AnimationType::RollForwardLeft45;
-	}
-	else if (direction.x == 1 && direction.z == -1) {
-		animationType = AnimationType::RollBackwardRight45;
-	}
-	else if (direction.x == -1 && direction.z == -1) {
-		animationType = AnimationType::RollBackwardLeft45;
-	}
-	else if (direction.x == 1) {
-		animationType = AnimationType::RollRight;
-	}
-	else if (direction.x == -1) {
-		animationType = AnimationType::RollLeft;
-	}
-	else if (direction.z == 1) {
+	else {
 		animationType = AnimationType::RollForward;
-	}
-	else if (direction.z == -1) {
-		animationType = AnimationType::RollBackward;
+		if (direction.x == 1 && direction.z == 1) {
+			animationType = AnimationType::RollForwardRight45;
+		}
+		else if (direction.x == -1 && direction.z == 1) {
+			animationType = AnimationType::RollForwardLeft45;
+		}
+		else if (direction.x == 1 && direction.z == -1) {
+			animationType = AnimationType::RollBackwardRight45;
+		}
+		else if (direction.x == -1 && direction.z == -1) {
+			animationType = AnimationType::RollBackwardLeft45;
+		}
+		else if (direction.x == 1) {
+			animationType = AnimationType::RollRight;
+		}
+		else if (direction.x == -1) {
+			animationType = AnimationType::RollLeft;
+		}
+		else if (direction.z == 1) {
+			animationType = AnimationType::RollForward;
+		}
+		else if (direction.z == -1) {
+			animationType = AnimationType::RollBackward;
+		}
 	}
 	return animationType;
 }
@@ -395,6 +496,15 @@ void PlayerAttackState::Enter(StateMachineComponent* pStateMachine, StatePropert
 {
 	currentComboCount = 0;
 
+	auto hOwner = pStateMachine->GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+	if (comEquipmentOwner
+		&& comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		maxComboCount = MAX_TwoHand_COMBO_COUNT;
+	}
+	else {
+		maxComboCount = MAX_OneHand_COMBO_COUNT;
+	}
 	pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
 }
 
@@ -410,7 +520,7 @@ void PlayerAttackState::Update(StateMachineComponent* pStateMachine)
 	if (pStateMachine->CheckAnimationEnd()) {
 		fatalAttack = false;
 		if (doNextCombo) {
-			currentComboCount = (currentComboCount + 1) % MAX_COMBO_COUNT;
+			currentComboCount = (currentComboCount + 1) % maxComboCount;
 			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
 
 			doNextCombo = false;
@@ -460,9 +570,9 @@ AnimationType PlayerAttackState::GetAnimationType(StateMachineComponent* pStateM
 		if (comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) 
 		{
 			if (fatalAttack) {
-				return AnimationType::TwoHandIdle;
+				return AnimationType::TwoHandBaseFatalAttack;
 			}
-			return AnimationType::TwoHandIdle;
+			return AnimationType((UINT)AnimationType::TwoHandBaseAttackTypeB_1 + (currentComboCount));
 		}
 		else if (comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) 
 		{
@@ -507,6 +617,15 @@ void PlayerParryState::HandleEvent(StateMachineComponent* pStateMachine, GameEve
 
 void PlayerHitState::Enter(StateMachineComponent* pStateMachine, StateProperty property)
 {
+	auto hOwner = pStateMachine->GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+	if (comEquipmentOwner
+		&& comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		twoHand = true;
+	}
+	else {
+		twoHand = false;
+	}
 	direction = property.dir;
 	strength = property.strength;
 	shield = property.shield;
@@ -545,6 +664,9 @@ void PlayerHitState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent
 
 AnimationType PlayerHitState::GetAnimationType()
 {
+	if (twoHand && shield) {
+		return AnimationType::TwoHandBlockHit;
+	}
 	if (fatalHit) {
 		return AnimationType::OneHandBaseFatalHit;
 	}
@@ -599,6 +721,13 @@ void PlayerParriedState::HandleEvent(StateMachineComponent* pStateMachine, GameE
 
 void EnemyIdleState::Enter(StateMachineComponent* pStateMachine, StateProperty stateProperty)
 {
+	auto hOwner = pStateMachine->GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+	if (comEquipmentOwner
+		&& comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		pStateMachine->SetOwnerAnimation(AnimationType::TwoHandIdle);
+		return;
+	}
 	pStateMachine->SetOwnerAnimation(AnimationType::Idle);
 }
 
@@ -638,7 +767,7 @@ void EnemyAttackState::Update(StateMachineComponent* pStateMachine)
 
 		fatalAttack = false;
 		if (doNextCombo) {
-			currentComboCount = (currentComboCount + 1) % MAX_COMBO_COUNT;
+			currentComboCount = (currentComboCount + 1) % maxComboCount;
 			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
 
 			doNextCombo = false;

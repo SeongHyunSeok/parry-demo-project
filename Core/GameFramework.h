@@ -138,7 +138,8 @@ private:
 		UINT& objCBIndexCounter,
 		Material* pEquipmentMaterial,
 		bool hasOneHandSword,
-		bool hasShield
+		bool hasShield,
+		bool hasTwoHandSword
 	) {
 		using namespace physics;
 		using namespace JPH;
@@ -214,6 +215,16 @@ private:
 				pEquipmentMaterial
 			);
 		}
+		if (hasTwoHandSword)
+		{
+			BuildEquipmentItem(
+				handle,
+				objCBIndexCounter,
+				comEquipmentOwner,
+				EquipmentType::TwoHandSword,
+				pEquipmentMaterial
+			);
+		}
 		if (hasShield)
 		{
 			BuildEquipmentItem(
@@ -224,6 +235,7 @@ private:
 				pEquipmentMaterial
 			);
 		}
+		
 
 		WORLD.AttachComponent(handle, std::move(comEquipmentOwner));
 	}

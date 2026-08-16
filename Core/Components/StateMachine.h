@@ -127,7 +127,7 @@ public:
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
 private:
 	XMINT3 direction = { 0, 0, 1 };
-
+	bool twoHand = false;
 	AnimationType GetAnimationType();
 };
 
@@ -141,7 +141,9 @@ public:
 	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
 protected:
-	const unsigned int MAX_COMBO_COUNT = 7;
+	const unsigned int MAX_OneHand_COMBO_COUNT = 7;
+	const unsigned int MAX_TwoHand_COMBO_COUNT = 3;
+	unsigned int maxComboCount = 0;
 	unsigned int currentComboCount = 0;
 	bool doNextCombo = false;
 	bool fatalAttack = false;
@@ -174,6 +176,7 @@ private:
 	float strength = 0.0f;
 	bool fatalHit = false;
 	bool shield = false;
+	bool twoHand = false;
 
 	AnimationType GetAnimationType();
 };

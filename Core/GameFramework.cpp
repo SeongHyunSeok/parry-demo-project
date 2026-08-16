@@ -1330,7 +1330,11 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 		playerInput.type = InputType::Attack;
 	}
 
-	if (playerInput.shield && inputManager.IsJustPressed(VK_RBUTTON)) {
+	auto hOwner = player.GetOwner();
+	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+
+	if (playerInput.shield && inputManager.IsJustPressed(VK_RBUTTON) && 
+		!comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
 		playerInput.type = InputType::Parray;
 	}
 
@@ -2299,10 +2303,38 @@ void GameFramework::LoadSkinnedModel()
 	animationSet->generateAnimationSet(HumanoidAssets::MoveTypeToName);
 	animationSet->SetAnimationEffectiveTimeInfos(&HumanoidAssets::AnimationEffectiveTimeInfos);
 
-	for (auto& it : changeEndTime) {
-		animationSet->animationSets[it]->startTime = 0.200000f;
-		animationSet->animationSets[it]->endTime = animationSet->animationSets[it]->endTime / 2;
-	}
+	//for (auto& it : changeEndTime) {
+	//	animationSet->animationSets[it]->startTime = 0.200000f;
+	//	animationSet->animationSets[it]->endTime = animationSet->animationSets[it]->endTime / 2;
+	//}
+	animationSet->animationSets[AnimationType::TwoHandRollForward]->endTime = 1.133333f;
+	animationSet->animationSets[AnimationType::TwoHandRollForwardRight45]->endTime = 1.133333f;
+	animationSet->animationSets[AnimationType::TwoHandRollForwardLeft45]->endTime = 1.133333f;
+	animationSet->animationSets[AnimationType::TwoHandRollBackwardRight45]->endTime = 1.133333f;
+	animationSet->animationSets[AnimationType::TwoHandRollBackwardLeft45]->endTime = 1.133333f;
+	animationSet->animationSets[AnimationType::TwoHandRollRight]->endTime = 1.133333f;
+	animationSet->animationSets[AnimationType::TwoHandRollLeft]->endTime = 1.133333f;
+	animationSet->animationSets[AnimationType::TwoHandRollBackward]->endTime = 1.133333f;
+	
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_1]->endTime = 0.766667f;
+
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_2]->startTime = 0.166667f;
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_2]->endTime = 0.833333f;
+
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_3]->startTime = 0.133333f;
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_3]->endTime = 0.666667f;
+
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_4]->startTime = 0.133333f;
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_4]->endTime = 0.666667f;
+
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_5]->startTime = 0.133333f;
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_5]->endTime = 0.633333f;
+
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_6]->startTime = 0.300000f;
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_6]->endTime = 1.000000f;
+
+	animationSet->animationSets[AnimationType::OneHandBaseAttackTypeC_7]->startTime = 0.133333f;
+
 	animationSet->animationSets[AnimationType::TwoHandBaseAttackTypeB_1]->endTime = 1.166667f;
 	animationSet->animationSets[AnimationType::TwoHandBaseAttackTypeB_2]->startTime = 0.300000f;
 	animationSet->animationSets[AnimationType::TwoHandBaseAttackTypeB_2]->endTime = 0.933333f;
@@ -2315,6 +2347,11 @@ void GameFramework::LoadSkinnedModel()
 	XMVECTOR quat = MathHelper::QuaternionFromPithYawRoll(-2.0f, -0.1f, -0.5f);
 	animationSet->equipmentLocations[EquipmentType::OneHandSword] = EquipmentLocation(
 		37, XMMatrixTranslation(-2.0f, -0.5f, -7.0f) * XMMatrixRotationQuaternion(quat)
+	);
+
+	XMVECTOR tquat = MathHelper::QuaternionFromPithYawRoll(-1.7f, .0f, .0f);
+	animationSet->equipmentLocations[EquipmentType::TwoHandSword] = EquipmentLocation(
+		37, XMMatrixTranslation(-2.5f, -4.0f, -8.0f) * XMMatrixRotationQuaternion(tquat)
 	);
 	
 	animationSet->equipmentLocations[EquipmentType::Shield] = EquipmentLocation(
@@ -2963,7 +3000,8 @@ void GameFramework::BuildRenderItems()
 		playerRot,
 		objCBIndexCounter,
 		mMaterials["equipment"].get(),
-		true,
+		false,
+		false,
 		true
 	);
 
@@ -2991,8 +3029,9 @@ void GameFramework::BuildRenderItems()
 		ememyRot,
 		objCBIndexCounter,
 		mMaterials["equipment2"].get(),
-		true,
-		false
+		false,
+		false,
+		true
 	);
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> enemyStates;
 	enemyStates[StateType::Idle] = std::make_unique<EnemyIdleState>();
@@ -3015,7 +3054,7 @@ void GameFramework::BuildEquipmentItem(
 	const char* subMeshNames[(UINT)EquipmentType::Count] = {
 		"OneHandSword0",
 		"Shield0",
-		"TwoHandSword0"
+		"OneHandSword0"
 	};
 	auto hEquipmentObj = WORLD.AddObject();
 	MeshComponent comMesh(hEquipmentObj, objCBIndexCounter++,

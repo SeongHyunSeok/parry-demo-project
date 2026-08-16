@@ -133,6 +133,7 @@ namespace HumanoidAssets
 		{ AnimationType::OneHandBaseAttackTypeC_6,AnimationEffectiveTimeInfo(0.766667f, 0.866667f) },
 		{ AnimationType::OneHandBaseAttackTypeC_7,AnimationEffectiveTimeInfo(0.500000f, 0.633333f) },
 		{ AnimationType::OneHandBaseShieldParryType1,AnimationEffectiveTimeInfo(0.333333f, 0.433333f) },
+		{ AnimationType::OneHandBaseFatalAttack,AnimationEffectiveTimeInfo(0.0f, 3.700000f) },
 		{ AnimationType::RollBackward,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
 		{ AnimationType::RollBackwardLeft45,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },
 		{ AnimationType::RollBackwardRight45,AnimationEffectiveTimeInfo(0.0f, 0.433333f) },

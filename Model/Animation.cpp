@@ -306,7 +306,26 @@ AnimationController::AnimationController(AnimationSets* animationSets)
 		AnimationType::OneHandBaseShieldWalkRight,
 		AnimationType::OneHandBaseShieldWalkBackward,
 		AnimationType::OneHandBaseShieldWalkBackwardLeft45,
-		AnimationType::OneHandBaseShieldWalkBackwardRight45
+		AnimationType::OneHandBaseShieldWalkBackwardRight45,
+
+		AnimationType::TwoHandIdle,
+		AnimationType::TwoHandWalkForward,
+		AnimationType::TwoHandWalkForwardLeft45,
+		AnimationType::TwoHandWalkForwardRight45,
+		AnimationType::TwoHandWalkLeft,
+		AnimationType::TwoHandWalkRight,
+		AnimationType::TwoHandWalkBackward,
+		AnimationType::TwoHandWalkBackwardLeft45,
+		AnimationType::TwoHandWalkBackwardRight45,
+		AnimationType::TwoHandBlockIdle,
+		AnimationType::TwoHandBlockWalkForward,
+		AnimationType::TwoHandBlockWalkForwardLeft45,
+		AnimationType::TwoHandBlockWalkForwardRight45,
+		AnimationType::TwoHandBlockWalkLeft,
+		AnimationType::TwoHandBlockWalkRight,
+		AnimationType::TwoHandBlockWalkBackward,
+		AnimationType::TwoHandBlockWalkBackwardLeft45,
+		AnimationType::TwoHandBlockWalkBackwardRight45
 	};
 
 	for (const auto& it : animationSets->animationSets) {
