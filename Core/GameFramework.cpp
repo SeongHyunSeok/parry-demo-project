@@ -1288,6 +1288,20 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 		return;
 	}
 
+	if (inputManager.IsJustPressed(VK_CAPITAL)) {
+		if (inputManager.IsMouseLocked()) {
+			actionLock = true;
+			while (ShowCursor(TRUE) < 0);
+		}
+		else {
+			actionLock = false;
+			while (ShowCursor(FALSE) >= 0);
+		}
+		inputManager.LockMouse(!inputManager.IsMouseLocked());
+	}
+	if (actionLock) return;
+
+
 	// '[' key pressed
 	if (inputManager.IsJustReleased(VK_OEM_4))
 		mTimerView.SetTimeMultiplier(max(mTimerView.GetTimerMultiplier() - 0.1, 0.1));
@@ -1329,21 +1343,13 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	if (inputManager.IsJustPressed(VK_LBUTTON) && !directionlock) {
 		playerInput.type = InputType::Attack;
 	}
-
+	
 	auto hOwner = player.GetOwner();
 	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
 
 	if (playerInput.shield && inputManager.IsJustPressed(VK_RBUTTON) && 
 		!comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
 		playerInput.type = InputType::Parray;
-	}
-
-	if (inputManager.IsJustPressed(VK_CAPITAL)) {
-		if (inputManager.IsMouseLocked()) 
-			while (ShowCursor(TRUE) < 0);
-		else 
-			while (ShowCursor(FALSE) >= 0);
-		inputManager.LockMouse(!inputManager.IsMouseLocked());
 	}
 
 	player.Input(playerInput);
@@ -1728,6 +1734,51 @@ void GameFramework::UpdateImGui()
 	static int e = 0;
 	ImGui::RadioButton("One Hand Sword", &e, 0); ImGui::SameLine();
 	ImGui::RadioButton("Two Hand Sword", &e, 1);
+
+	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+	auto hOwner = player.GetOwner();
+	auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+	if (e == 0 && 
+		comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		auto& hTwohandObj = comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword];
+		if (hTwohandObj.has_value())
+		{
+			WORLD.DetachComponent<EquippedComponent>(hTwohandObj.value());
+			comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword] = std::nullopt;
+
+			auto& hOneHandObj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::OneHandSword];
+			auto comEquipped = EquippedComponent(hOneHandObj.value());
+			comEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::OneHandSword];
+			comEquipped.owner = hOwner;
+			WORLD.AttachComponent(hOneHandObj.value(), std::move(comEquipped));
+			comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword] = hOneHandObj.value();
+			
+			auto& hShieldObj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::Shield];
+			auto comShieldEquipped = EquippedComponent(hShieldObj.value());
+			comShieldEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::Shield];
+			comShieldEquipped.owner = hOwner;
+			WORLD.AttachComponent(hShieldObj.value(), std::move(comShieldEquipped));
+			comEquipmentOwner->equipments[(UINT)EquipmentType::Shield] = hShieldObj.value();
+		}
+	}
+	else if (e == 1 && 
+		comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) {
+		auto& hOneHandObj = comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword];
+		WORLD.DetachComponent<EquippedComponent>(hOneHandObj.value());
+		comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword] = std::nullopt;
+
+		auto& hShieldObj = comEquipmentOwner->equipments[(UINT)EquipmentType::Shield];
+		WORLD.DetachComponent<EquippedComponent>(hShieldObj.value());
+		comEquipmentOwner->equipments[(UINT)EquipmentType::Shield] = std::nullopt;
+
+		auto& hEquipobj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::TwoHandSword];
+
+		auto comEquipped = EquippedComponent(hEquipobj.value());
+		comEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::TwoHandSword];
+		comEquipped.owner = hOwner;
+		WORLD.AttachComponent(hEquipobj.value(), std::move(comEquipped));
+		comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword] = hEquipobj.value();
+	}
 
 	ImGui::SeparatorText("Game World Simulation");
 	static int clicked = 0;
@@ -3000,9 +3051,9 @@ void GameFramework::BuildRenderItems()
 		playerRot,
 		objCBIndexCounter,
 		mMaterials["equipment"].get(),
-		false,
-		false,
-		true
+		true,
+		true,
+		false
 	);
 
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> playerStates;
@@ -3049,7 +3100,8 @@ void GameFramework::BuildEquipmentItem(
 	UINT& objCBIndexCounter,
 	EquipmentOwnerComponent& comEquipmentOwner,
 	EquipmentType equipmentType,
-	Material* pMaterial
+	Material* pMaterial,
+	bool equip
 ) {
 	const char* subMeshNames[(UINT)EquipmentType::Count] = {
 		"OneHandSword0",
@@ -3067,12 +3119,15 @@ void GameFramework::BuildEquipmentItem(
 	WORLD.AttachComponent(hEquipmentObj, std::move(comMesh));
 	WORLD.AttachComponent(hEquipmentObj, std::move(comEquipment));
 
-	auto comEquipped = EquippedComponent(hEquipmentObj); // for rendering
-	comEquipped.EquippedCBIndex = comEquipmentOwner.equippedCBIndices[(UINT)equipmentType];
-	comEquipped.owner = ownerHandle;
-	WORLD.AttachComponent(hEquipmentObj, std::move(comEquipped));
+	if (equip) {
+		auto comEquipped = EquippedComponent(hEquipmentObj); // for rendering
+		comEquipped.EquippedCBIndex = comEquipmentOwner.equippedCBIndices[(UINT)equipmentType];
+		comEquipped.owner = ownerHandle;
+		WORLD.AttachComponent(hEquipmentObj, std::move(comEquipped));
+		comEquipmentOwner.equipments[(UINT)equipmentType] = hEquipmentObj;
+	}
 
-	comEquipmentOwner.equipments[(UINT)equipmentType] = hEquipmentObj;
+	comEquipmentOwner.equipmentStorage[(UINT)equipmentType] = hEquipmentObj;
 }
 
 void GameFramework::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems)

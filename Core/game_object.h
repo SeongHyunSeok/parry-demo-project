@@ -37,6 +37,19 @@ public:
 		return result;
 	}
 
+	//template <typename T>
+	//	requires std::derived_from<std::remove_cvref_t<T>, Component>
+	//std::optional<Handle<Component>> DetachComponent() {
+	//	auto it = components.find(std::type_index{ typeid(std::remove_cvref_t<T>) });
+	//	if (it == components.end()) {
+	//		return {};
+	//	}
+	//	auto [_, handle] = *it;
+	//	components.erase(it);
+	//	Handle<T>* concreteHandle = reinterpret_cast<Handle<T> *>(&handle);
+	//	return *concreteHandle;
+	//}
+
 	template <typename T>
 		requires std::derived_from<std::remove_cvref_t<T>, Component>
 	std::optional<Handle<Component>> DetachComponent() {
@@ -46,8 +59,7 @@ public:
 		}
 		auto [_, handle] = *it;
 		components.erase(it);
-		Handle<T>* concreteHandle = reinterpret_cast<Handle<T> *>(&handle);
-		return *concreteHandle;
+		return handle; 
 	}
 
 	template <typename T>

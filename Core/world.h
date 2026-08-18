@@ -75,7 +75,7 @@ public:
 			return {};
 		}
 
-		anyComponents.erase(handle);
+		anyComponents.erase(*handle);
 
 		auto& v = GetComponentTable<T, Component>();
 		return v.Erase(*handle);

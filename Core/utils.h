@@ -154,10 +154,18 @@ public:
 			return entity;
 		}
 
-		std::swap(entities[entityIdx], entities.back());
+		//std::swap(entities[entityIdx], entities.back());
+		//entities.pop_back();
+		//std::swap(indices[entityIdx], indices.back());
+		//indices.pop_back();
+
+		entities[entityIdx].~T();
+		new (&entities[entityIdx]) T(std::move(entities.back()));
 		entities.pop_back();
+
 		std::swap(indices[entityIdx], indices.back());
 		indices.pop_back();
+
 		handleToEntity[indices[entityIdx]] = entityIdx;
 		return entity;
 	}

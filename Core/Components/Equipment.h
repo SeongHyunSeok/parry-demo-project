@@ -30,4 +30,5 @@ struct EquipmentOwnerComponent : public Component
 
     UINT equippedCBIndices[(UINT)EquipmentType::Count];
     std::optional<Handle<GameObject>> equipments[(UINT)EquipmentType::Count];
+    std::optional<Handle<GameObject>> equipmentStorage[(UINT)EquipmentType::Count];
 };

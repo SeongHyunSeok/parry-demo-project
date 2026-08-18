@@ -205,37 +205,33 @@ private:
 
 		EquipmentOwnerComponent comEquipmentOwner{ handle, equippedCBIndexCounter };
 
-		if (hasOneHandSword)
-		{
-			BuildEquipmentItem(
-				handle,
-				objCBIndexCounter,
-				comEquipmentOwner,
-				EquipmentType::OneHandSword,
-				pEquipmentMaterial
-			);
-		}
-		if (hasTwoHandSword)
-		{
-			BuildEquipmentItem(
-				handle,
-				objCBIndexCounter,
-				comEquipmentOwner,
-				EquipmentType::TwoHandSword,
-				pEquipmentMaterial
-			);
-		}
-		if (hasShield)
-		{
-			BuildEquipmentItem(
-				handle,
-				objCBIndexCounter,
-				comEquipmentOwner,
-				EquipmentType::Shield,
-				pEquipmentMaterial
-			);
-		}
-		
+		BuildEquipmentItem(
+			handle,
+			objCBIndexCounter,
+			comEquipmentOwner,
+			EquipmentType::OneHandSword,
+			pEquipmentMaterial,
+			hasOneHandSword
+		);
+
+		BuildEquipmentItem(
+			handle,
+			objCBIndexCounter,
+			comEquipmentOwner,
+			EquipmentType::TwoHandSword,
+			pEquipmentMaterial,
+			hasTwoHandSword
+		);
+
+		BuildEquipmentItem(
+			handle,
+			objCBIndexCounter,
+			comEquipmentOwner,
+			EquipmentType::Shield,
+			pEquipmentMaterial,
+			hasShield
+		);
+
 
 		WORLD.AttachComponent(handle, std::move(comEquipmentOwner));
 	}
@@ -244,7 +240,8 @@ private:
 		UINT& objCBIndexCounter,
 		EquipmentOwnerComponent& comEquipmentOwner,
 		EquipmentType equipmentType,
-		Material* pMaterial
+		Material* pMaterial,
+		bool equip
 	);
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<NonAnimatedComponent>& ritems);
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<AnimationComponent>& ritems);
@@ -393,6 +390,8 @@ private:
 	float mPlayerHitTime = 0.0f;
 	float rollJudgementFrameOffset = 0.0f;
 	bool showPlayerValidRollHit = true;
+
+	bool actionLock = false;
 
 	bool directionlock = false;
 	float directionlockTime = 0.0f;
