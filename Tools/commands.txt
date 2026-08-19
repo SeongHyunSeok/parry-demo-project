@@ -1,0 +1,1 @@
+ .\texconv.exe -f BC7_UNORM -r ..\Textures\Particles\Snowflake.png

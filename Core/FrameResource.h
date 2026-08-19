@@ -5,6 +5,7 @@
 #include "UploadBuffer.h"
 #include "Vertex.h"
 #include "Light.h"
+#include "Particle.h"
 
 struct ObjectConstants
 {
@@ -94,7 +95,7 @@ struct FrameResource
 {
 public:
 
-    FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT skinnedObjectCount, UINT materialCount, UINT equipmentCount);
+    FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT skinnedObjectCount, UINT materialCount, UINT equipmentCount, UINT maxBillboardParticleCount);
     FrameResource(const FrameResource& rhs) = delete;
     FrameResource& operator=(const FrameResource& rhs) = delete;
     ~FrameResource();
@@ -111,6 +112,7 @@ public:
     std::unique_ptr<UploadBuffer<SsaoConstants>> SsaoCB = nullptr;
     std::unique_ptr<UploadBuffer<MaterialData>> MaterialBuffer = nullptr;
     std::unique_ptr<UploadBuffer<EquippedObjectConstants>> EquippedObjectCB = nullptr;
+    std::unique_ptr<UploadBuffer<ShaderParticle>> BillbarodParticleVB = nullptr;
 
     // Fence value to mark commands up to this fence point.  This lets us
     // check if these frame resources are still in use by the GPU.

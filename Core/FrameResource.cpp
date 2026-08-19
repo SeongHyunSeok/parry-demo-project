@@ -1,6 +1,6 @@
 #include "FrameResource.h"
 
-FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT skinnedObjectCount, UINT materialCount, UINT equipmentCount)
+FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT skinnedObjectCount, UINT materialCount, UINT equipmentCount, UINT maxBillboardParticleCount)
 {
     ThrowIfFailed(device->CreateCommandAllocator(
         D3D12_COMMAND_LIST_TYPE_DIRECT,
@@ -12,6 +12,8 @@ FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCo
     ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
     SkinnedCB = std::make_unique<UploadBuffer<SkinnedConstants>>(device, skinnedObjectCount, true);
     EquippedObjectCB = std::make_unique<UploadBuffer<EquippedObjectConstants>>(device, equipmentCount, true);
+
+    BillbarodParticleVB = std::make_unique<UploadBuffer<ShaderParticle>>(device, maxBillboardParticleCount, false);
 }
 
 FrameResource::~FrameResource()

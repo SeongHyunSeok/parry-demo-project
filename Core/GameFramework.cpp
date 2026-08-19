@@ -193,6 +193,13 @@ bool GameFramework::Initialize()
 		mCommandList.Get(),
 		mClientWidth, mClientHeight);
 
+	mParticleManager.Initialize(
+		md3dDevice.Get(),
+		mCommandList.Get(),
+		mBackBufferFormat, mDepthStencilFormat,
+		m4xMsaaState, m4xMsaaQuality
+	);
+
 	LoadSkinnedModel();
 	LoadTextures();
 	BuildRootSignature();
@@ -1110,6 +1117,8 @@ void GameFramework::Update(float dt)
 	UpdateMainPassCB(dt);
 	UpdateShadowPassCB(dt);
 	UpdateSsaoCB(dt);
+
+	mParticleManager.Update(dt, mCurrFrameResource, camera.GetUp3f(), camera.GetLook3f());
 }
 
 void GameFramework::Draw(float dt)
@@ -1237,6 +1246,8 @@ void GameFramework::Draw(float dt)
 		DrawRenderItem(mCommandList.Get(), pSkyMeshComp);
 	}
 
+	mParticleManager.Render(mCommandList.Get(), passCB->GetGPUVirtualAddress());
+
 	// Render Dear ImGui graphics
 	ImGui::Render();
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
@@ -1341,6 +1352,12 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	}
 
 	if (inputManager.IsJustPressed(VK_LBUTTON) && !directionlock) {
+		mParticleManager.CreateParticle(
+			"snow_slash_snowflake",
+			XMFLOAT3(1.0f, 1.0f, 1.0f),
+			XMFLOAT3(10.0f, 10.0f, 0.0f),
+			XMFLOAT3(0.0f, 0.0f, 0.0f)
+		);
 		playerInput.type = InputType::Attack;
 	}
 	
@@ -1998,7 +2015,7 @@ void GameFramework::BuildDescriptorHeaps()
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 64;
+	srvHeapDesc.NumDescriptors = 84;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -2064,6 +2081,7 @@ void GameFramework::BuildDescriptorHeaps()
 	mNullCubeSrvIndex = mSsaoHeapIndexStart + 5;
 	mNullTexSrvIndex1 = mNullCubeSrvIndex + 1;
 	mNullTexSrvIndex2 = mNullTexSrvIndex1 + 1;
+	mParticleHeapIndexStart = mNullTexSrvIndex2 + 1;
 
 	auto nullSrv = GetCpuSrv(mNullCubeSrvIndex);
 	mNullSrv = GetGpuSrv(mNullCubeSrvIndex);
@@ -2093,6 +2111,12 @@ void GameFramework::BuildDescriptorHeaps()
 		GetRtv(SwapChainBufferCount),
 		mCbvSrvUavDescriptorSize,
 		mRtvDescriptorSize);
+
+	mParticleManager.BuildDescriptors(
+		GetCpuSrv(mParticleHeapIndexStart),
+		GetGpuSrv(mParticleHeapIndexStart),
+		mCbvSrvUavDescriptorSize
+	);
 }
 
 void GameFramework::BuildShadersAndInputLayout()
@@ -2813,7 +2837,7 @@ void GameFramework::BuildFrameResources()
 			2, (UINT)WORLD.GetComponents<MeshComponent>().size(),
 			(UINT)WORLD.GetComponents<AnimationComponent>().size(),
 			(UINT)mMaterials.size(),
-			(UINT)(WORLD.GetComponents<EquipmentOwnerComponent>().size() * (UINT)EquipmentType::Count)
+			(UINT)(WORLD.GetComponents<EquipmentOwnerComponent>().size() * (UINT)EquipmentType::Count), ParticleManager::MAX_BILLBOARD_PARTICLES
 		));
 	}
 }

@@ -15,6 +15,7 @@
 #include "Texture.h"
 #include "Light.h"
 #include "Vertex.h"
+#include "ParticleManager.h"
 #include "Components/Mesh.h"
 #include "Components/Animation.h"
 #include "Components/Sky.h"
@@ -357,6 +358,10 @@ private:
 	UINT mSsaoHeapIndexStart = 0;
 	UINT mSsaoAmbientMapIndex = 0;
 	std::unique_ptr<Ssao> mSsao;
+
+	// particle
+	UINT mParticleHeapIndexStart = 0;
+	ParticleManager mParticleManager;
 
 	// light
 	float mLightNearZ = 0.0f;

@@ -59,8 +59,9 @@ public:
 
 private:
     Microsoft::WRL::ComPtr<ID3D12Resource> mUploadBuffer;
-    BYTE* mMappedData = nullptr;
 
     UINT mElementByteSize = 0;
     bool mIsConstantBuffer = false;
+public:
+    BYTE* mMappedData = nullptr;
 };

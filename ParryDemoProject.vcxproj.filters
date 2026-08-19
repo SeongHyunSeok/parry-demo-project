@@ -117,6 +117,12 @@
     <ClCompile Include="imgui\backends\imgui_impl_win32.cpp">
       <Filter>Core\imgui</Filter>
     </ClCompile>
+    <ClCompile Include="Core\ParticleEmitter.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\ParticleManager.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Camera.h">
@@ -263,6 +269,18 @@
     <ClInclude Include="Assets\Humanoid.h">
       <Filter>Assets</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Particle.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\ParticleEmitter.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\ParticleManager.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Assets\Particles.h">
+      <Filter>Assets</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Core\Shaders\Common.hlsl">
@@ -293,6 +311,9 @@
       <Filter>Core\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Core\Shaders\DrawStartPage.hlsl">
+      <Filter>Core\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Core\Shaders\ParticleBillboard.hlsl">
       <Filter>Core\Shaders</Filter>
     </FxCompile>
   </ItemGroup>
