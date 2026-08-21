@@ -948,6 +948,52 @@ void GameFramework::Update(float dt)
 
 	UpdateImGui();
 
+	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+	auto hOwner = player.GetOwner();
+	auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
+
+	if (bOneHandMode &&
+		comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
+		auto& hTwohandObj = comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword];
+		if (hTwohandObj.has_value())
+		{
+			WORLD.DetachComponent<EquippedComponent>(hTwohandObj.value());
+			comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword] = std::nullopt;
+
+			auto& hOneHandObj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::OneHandSword];
+			auto comEquipped = EquippedComponent(hOneHandObj.value());
+			comEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::OneHandSword];
+			comEquipped.owner = hOwner;
+			WORLD.AttachComponent(hOneHandObj.value(), std::move(comEquipped));
+			comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword] = hOneHandObj.value();
+
+			auto& hShieldObj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::Shield];
+			auto comShieldEquipped = EquippedComponent(hShieldObj.value());
+			comShieldEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::Shield];
+			comShieldEquipped.owner = hOwner;
+			WORLD.AttachComponent(hShieldObj.value(), std::move(comShieldEquipped));
+			comEquipmentOwner->equipments[(UINT)EquipmentType::Shield] = hShieldObj.value();
+		}
+	}
+	else if (!bOneHandMode &&
+		comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) {
+		auto& hOneHandObj = comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword];
+		WORLD.DetachComponent<EquippedComponent>(hOneHandObj.value());
+		comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword] = std::nullopt;
+
+		auto& hShieldObj = comEquipmentOwner->equipments[(UINT)EquipmentType::Shield];
+		WORLD.DetachComponent<EquippedComponent>(hShieldObj.value());
+		comEquipmentOwner->equipments[(UINT)EquipmentType::Shield] = std::nullopt;
+
+		auto& hEquipobj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::TwoHandSword];
+
+		auto comEquipped = EquippedComponent(hEquipobj.value());
+		comEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::TwoHandSword];
+		comEquipped.owner = hOwner;
+		WORLD.AttachComponent(hEquipobj.value(), std::move(comEquipped));
+		comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword] = hEquipobj.value();
+	}
+
 	//
 	// Animate the lights (and hence shadows).
 	//
@@ -962,13 +1008,25 @@ void GameFramework::Update(float dt)
 		XMStoreFloat3(&mRotatedLightDirections[i], lightDir);
 	}
 
+
 	// Debug--------------
-	auto& player = WORLD.GetComponents<PlayerComponent>().front();
+	//auto& player = WORLD.GetComponents<PlayerComponent>().front();
 	auto pComPlayerStateMachine = WORLD.GetComponent<StateMachineComponent>(player.GetOwner());
 	auto pComPlayerMesh = WORLD.GetComponent<MeshComponent>(player.GetOwner());
 
 	auto& comEnemyStateMachine = (WORLD.GetComponents<StateMachineComponent>())[1];
 	auto pComEnemyMesh = WORLD.GetComponent<MeshComponent>(comEnemyStateMachine.GetOwner());
+
+	if (bEnemyActive) {
+		GameEvent ge;
+		ge.enemyEventType = EnemyEventType::Active;
+		comEnemyStateMachine.HandleGameEvent(ge);
+	}
+	else {
+		GameEvent ge;
+		ge.enemyEventType = EnemyEventType::Stop;
+		comEnemyStateMachine.HandleGameEvent(ge);
+	}
 
 	if (showEnemyValidAttackFrame && comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack) {
 		auto pComEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(comEnemyStateMachine.GetOwner());
@@ -1746,56 +1804,17 @@ void GameFramework::UpdateImGui()
 	ImGui::Checkbox("Show Enemy Valid Attack Frame", &showEnemyValidAttackFrame);
 	ImGui::Checkbox("Show Player Valid Parry Frame", &showPlayerValidParryFrame);
 	ImGui::Checkbox("Show Player Valid Roll Hit", &showPlayerValidRollHit);
+	ImGui::Checkbox("Enemy Active", &bEnemyActive);
 
 	ImGui::SeparatorText("Attack Type(Preparing)");
 	static int e = 0;
 	ImGui::RadioButton("One Hand Sword", &e, 0); ImGui::SameLine();
 	ImGui::RadioButton("Two Hand Sword", &e, 1);
 
-	auto& player = WORLD.GetComponents<PlayerComponent>().front();
-	auto hOwner = player.GetOwner();
-	auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
-	if (e == 0 && 
-		comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
-		auto& hTwohandObj = comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword];
-		if (hTwohandObj.has_value())
-		{
-			WORLD.DetachComponent<EquippedComponent>(hTwohandObj.value());
-			comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword] = std::nullopt;
-
-			auto& hOneHandObj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::OneHandSword];
-			auto comEquipped = EquippedComponent(hOneHandObj.value());
-			comEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::OneHandSword];
-			comEquipped.owner = hOwner;
-			WORLD.AttachComponent(hOneHandObj.value(), std::move(comEquipped));
-			comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword] = hOneHandObj.value();
-			
-			auto& hShieldObj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::Shield];
-			auto comShieldEquipped = EquippedComponent(hShieldObj.value());
-			comShieldEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::Shield];
-			comShieldEquipped.owner = hOwner;
-			WORLD.AttachComponent(hShieldObj.value(), std::move(comShieldEquipped));
-			comEquipmentOwner->equipments[(UINT)EquipmentType::Shield] = hShieldObj.value();
-		}
-	}
-	else if (e == 1 && 
-		comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) {
-		auto& hOneHandObj = comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword];
-		WORLD.DetachComponent<EquippedComponent>(hOneHandObj.value());
-		comEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword] = std::nullopt;
-
-		auto& hShieldObj = comEquipmentOwner->equipments[(UINT)EquipmentType::Shield];
-		WORLD.DetachComponent<EquippedComponent>(hShieldObj.value());
-		comEquipmentOwner->equipments[(UINT)EquipmentType::Shield] = std::nullopt;
-
-		auto& hEquipobj = comEquipmentOwner->equipmentStorage[(UINT)EquipmentType::TwoHandSword];
-
-		auto comEquipped = EquippedComponent(hEquipobj.value());
-		comEquipped.EquippedCBIndex = comEquipmentOwner->equippedCBIndices[(UINT)EquipmentType::TwoHandSword];
-		comEquipped.owner = hOwner;
-		WORLD.AttachComponent(hEquipobj.value(), std::move(comEquipped));
-		comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword] = hEquipobj.value();
-	}
+	if (e == 0)
+		bOneHandMode = true;
+	else if (e == 1 )
+		bOneHandMode = false;
 
 	ImGui::SeparatorText("Game World Simulation");
 	static int clicked = 0;
@@ -3104,15 +3123,17 @@ void GameFramework::BuildRenderItems()
 		ememyRot,
 		objCBIndexCounter,
 		mMaterials["equipment2"].get(),
+		true,
 		false,
-		false,
-		true
+		false
 	);
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> enemyStates;
 	enemyStates[StateType::Idle] = std::make_unique<EnemyIdleState>();
 	enemyStates[StateType::Attack] = std::make_unique<EnemyAttackState>();
 	enemyStates[StateType::Hit] = std::make_unique<EnemyHitState>();
 	enemyStates[StateType::Parried] = std::make_unique<EnemyParriedState>();
+	enemyStates[StateType::Walk] = std::make_unique<EnemyWalkState>();
+	enemyStates[StateType::Pattern] = std::make_unique<EnemyPatternState>();
 	StateMachineComponent comEnemySM{ hEnemyObj, move(enemyStates), StateType::Idle };
 	WORLD.AttachComponent(hEnemyObj, std::move(comEnemySM));
 

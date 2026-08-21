@@ -19,6 +19,7 @@
 #include <fstream>
 #include <sstream>
 #include <cassert>
+#include <random>
 #include "d3dx12.h"
 #include "DDSTextureLoader.h"
 #include "MathHelper.h"

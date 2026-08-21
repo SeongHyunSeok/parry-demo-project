@@ -395,8 +395,11 @@ private:
 	float mPlayerHitTime = 0.0f;
 	float rollJudgementFrameOffset = 0.0f;
 	bool showPlayerValidRollHit = true;
+	bool bEnemyActive = false;
+
 
 	bool actionLock = false;
+	bool bOneHandMode = true;
 
 	bool directionlock = false;
 	float directionlockTime = 0.0f;
