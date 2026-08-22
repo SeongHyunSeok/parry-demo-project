@@ -361,6 +361,8 @@ private:
 
 	const float MIN_BACKSTEP_DURATION = 0.25f;
 	const float MAX_BACKSTEP_DURATION = 0.45f;
+	const float MIN_CLOSE_BACKSTEP_DURATION = 0.55f;
+	const float MAX_CLOSE_BACKSTEP_DURATION = 0.75f;
 
 	const float MIN_WAIT_DURATION = 0.15f;
 	const float MAX_WAIT_DURATION = 0.45f;

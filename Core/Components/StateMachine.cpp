@@ -982,8 +982,21 @@ void EnemyWalkState::Enter(StateMachineComponent* pStateMachine, StateProperty p
 		break;
 
 	case EnemyPattern::BackStep:
-		moveDuration = GetRandomFloat(MIN_BACKSTEP_DURATION, MAX_BACKSTEP_DURATION);
+	{
+		float distance = ATTACK_DISTANCE;
+		auto& player = WORLD.GetComponents<PlayerComponent>().front();
+		pStateMachine->CheckDistAndSetToFaceOpponent(player.GetOwner(), ATTACK_DISTANCE, &distance);
+
+		if (distance <= CLOSE_DISTANCE)
+		{
+			moveDuration = GetRandomFloat(MIN_CLOSE_BACKSTEP_DURATION, MAX_CLOSE_BACKSTEP_DURATION);
+		}
+		else
+		{
+			moveDuration = GetRandomFloat(MIN_BACKSTEP_DURATION, MAX_BACKSTEP_DURATION);
+		}
 		break;
+	}
 
 	case EnemyPattern::Wait:
 		moveDuration = GetRandomFloat(MIN_WAIT_DURATION, MAX_WAIT_DURATION);
