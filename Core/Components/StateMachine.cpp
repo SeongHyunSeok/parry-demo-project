@@ -1157,6 +1157,11 @@ EnemyPattern EnemyPatternState::SelectPattern(StateMachineComponent* pStateMachi
 	{
 		auto attackPatterns = BuildAttackPatterns(pStateMachine, distance);
 		EnemyPattern selected = SelectWeightedPattern(attackPatterns);
+		if (selected == EnemyPattern::None)
+		{
+			auto watchingPatterns = BuildWatchingPatterns(distance);
+			selected = SelectWeightedPattern(watchingPatterns);
+		}
 
 		UpdatePatternHistory(selected);
 
@@ -1165,8 +1170,8 @@ EnemyPattern EnemyPatternState::SelectPattern(StateMachineComponent* pStateMachi
 
 	if (consecutiveAttackCount >= MAX_CONSECUTIVE_ATTACK_COUNT)
 	{
-		auto spacingPatterns = BuildWatchingPatterns(distance);
-		EnemyPattern selected = SelectWeightedPattern(spacingPatterns);
+		auto watchingPatterns = BuildWatchingPatterns(distance);
+		EnemyPattern selected = SelectWeightedPattern(watchingPatterns);
 
 		UpdatePatternHistory(selected);
 
@@ -1199,7 +1204,7 @@ EnemyPattern EnemyPatternState::SelectWeightedPattern(const std::vector<PatternW
 
 	if (totalWeight <= 0)
 	{
-		return EnemyPattern::Combo;
+		return EnemyPattern::None;
 	}
 
 	std::uniform_int_distribution<int> distribution(1, totalWeight);
@@ -1224,7 +1229,7 @@ EnemyPattern EnemyPatternState::SelectWeightedPattern(const std::vector<PatternW
 	}
 
 
-	return EnemyPattern::Combo;
+	return EnemyPattern::None;
 }
 
 std::vector<EnemyPatternState::PatternWeight> EnemyPatternState::BuildAttackPatterns(StateMachineComponent* pStateMachine, float distance)
@@ -1280,6 +1285,8 @@ std::vector<EnemyPatternState::PatternWeight> EnemyPatternState::BuildAttackPatt
 			};
 		}
 
+		DisableUncheckedAttacks(patterns);
+
 		return patterns;
 	}
 
@@ -1315,7 +1322,7 @@ std::vector<EnemyPatternState::PatternWeight> EnemyPatternState::BuildWatchingPa
 		};
 	}
 
-	if (distance <= MID_DISTANCE)
+	if (distance > CLOSE_DISTANCE && distance <= MID_DISTANCE)
 	{
 		patterns =
 		{
@@ -1325,7 +1332,7 @@ std::vector<EnemyPatternState::PatternWeight> EnemyPatternState::BuildWatchingPa
 			{ EnemyPattern::Wait,         7 }
 		};
 	}
-	if (distance <= ATTACK_DISTANCE)
+	if (distance > MID_DISTANCE && distance <= ATTACK_DISTANCE)
 	{
 		patterns =
 		{
@@ -1399,6 +1406,17 @@ void EnemyPatternState::DisablePreviousAttack(std::vector<PatternWeight>& patter
 		{
 			data.weight = 0;
 			break;
+		}
+	}
+}
+
+void EnemyPatternState::DisableUncheckedAttacks(std::vector<PatternWeight>& patterns) const
+{
+	for (PatternWeight& data : patterns)
+	{
+		if (IsAttackPattern(data.pattern) && !attackPatternSettings.IsEnabled(data.pattern))
+		{
+			data.weight = 0;
 		}
 	}
 }

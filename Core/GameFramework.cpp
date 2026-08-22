@@ -1806,6 +1806,23 @@ void GameFramework::UpdateImGui()
 	ImGui::Checkbox("Show Player Valid Roll Hit", &showPlayerValidRollHit);
 	ImGui::Checkbox("Enemy Active", &bEnemyActive);
 
+	ImGui::SeparatorText("Enemy Attack Patterns (One Hand)");
+	static const char* attackPatternLabels[7] =
+	{
+		"Attack 1",
+		"Attack 2",
+		"Attack 3",
+		"Attack 1 Offbeat",
+		"Attack 2 Offbeat",
+		"Attack 3 Offbeat",
+		"Combo"
+	};
+	for (unsigned int i = 0; i < EnemyAttackPatternSettings::PATTERN_COUNT; ++i)
+	{
+		ImGui::Checkbox(attackPatternLabels[i], &enemyAttackPatternSettings.enabled[i]);
+	}
+	ImGui::TextDisabled("These options affect one-hand enemies only.");
+
 	ImGui::SeparatorText("Attack Type(Preparing)");
 	static int e = 0;
 	ImGui::RadioButton("One Hand Sword", &e, 0); ImGui::SameLine();
@@ -3133,7 +3150,7 @@ void GameFramework::BuildRenderItems()
 	enemyStates[StateType::Hit] = std::make_unique<EnemyHitState>();
 	enemyStates[StateType::Parried] = std::make_unique<EnemyParriedState>();
 	enemyStates[StateType::Walk] = std::make_unique<EnemyWalkState>();
-	enemyStates[StateType::Pattern] = std::make_unique<EnemyPatternState>();
+	enemyStates[StateType::Pattern] = std::make_unique<EnemyPatternState>(enemyAttackPatternSettings);
 	StateMachineComponent comEnemySM{ hEnemyObj, move(enemyStates), StateType::Idle };
 	WORLD.AttachComponent(hEnemyObj, std::move(comEnemySM));
 

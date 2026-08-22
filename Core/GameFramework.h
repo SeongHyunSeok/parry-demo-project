@@ -396,6 +396,7 @@ private:
 	float rollJudgementFrameOffset = 0.0f;
 	bool showPlayerValidRollHit = true;
 	bool bEnemyActive = false;
+	EnemyAttackPatternSettings enemyAttackPatternSettings;
 
 
 	bool actionLock = false;

@@ -37,6 +37,27 @@ enum class EnemyPattern : unsigned int
 	Wait
 };
 
+struct EnemyAttackPatternSettings
+{
+	static constexpr unsigned int PATTERN_COUNT = 7;
+
+	bool enabled[PATTERN_COUNT] = { true, true, true, true, true, true, true };
+
+	bool IsEnabled(EnemyPattern pattern) const
+	{
+		const unsigned int patternIndex = static_cast<unsigned int>(pattern);
+		const unsigned int firstAttackIndex = static_cast<unsigned int>(EnemyPattern::EnemyAttack1);
+		const unsigned int comboIndex = static_cast<unsigned int>(EnemyPattern::Combo);
+
+		if (patternIndex < firstAttackIndex || patternIndex > comboIndex)
+		{
+			return true;
+		}
+
+		return enabled[patternIndex - firstAttackIndex];
+	}
+};
+
 struct StateProperty
 {
 	XMINT3 dir = { 0, 0, 0 };
@@ -236,7 +257,9 @@ private:
 class EnemyPatternState : public CharacterState
 {
 public:
-	EnemyPatternState() {}
+	explicit EnemyPatternState(const EnemyAttackPatternSettings& attackPatternSettings)
+		: attackPatternSettings(attackPatternSettings)
+	{}
 	void Enter(StateMachineComponent* pStateMachine, StateProperty property) override;
 	void Leave(StateMachineComponent* pStateMachine) override;
 	void Update(StateMachineComponent* pStateMachine) override;
@@ -260,6 +283,7 @@ private:
 	void ExecutePattern(StateMachineComponent* pStateMachine, EnemyPattern pattern);
 	void UpdatePatternHistory(EnemyPattern pattern);
 	void DisablePreviousAttack(std::vector<PatternWeight>& patterns) const;
+	void DisableUncheckedAttacks(std::vector<PatternWeight>& patterns) const;
 
 	bool CanUseEnemyAttack(StateMachineComponent* pStateMachine);
 	bool IsAttackPattern(EnemyPattern pattern) const;
@@ -270,7 +294,8 @@ private:
 
 	// 공격패턴의 연속 사용 횟수를 추적하는 변수. 공격 패턴이 일정 횟수 이상 반복되지 않기 위한 장치
 	int consecutiveAttackCount = 0;
-	static constexpr int MAX_CONSECUTIVE_ATTACK_COUNT = 3;
+	const unsigned int MAX_CONSECUTIVE_ATTACK_COUNT = 3;
+	const EnemyAttackPatternSettings& attackPatternSettings;
 };
 
 class EnemyAttackState : public PlayerAttackState
@@ -331,15 +356,13 @@ private:
 	std::chrono::steady_clock::time_point moveStartTime;
 	std::chrono::steady_clock::time_point lastUpdateTime;
 
-	static constexpr float MIN_STRAFE_DURATION = 0.45f;
-	static constexpr float MAX_STRAFE_DURATION = 0.95f;
+	const float MIN_STRAFE_DURATION = 0.45f;
+	const float MAX_STRAFE_DURATION = 0.95f;
 
-	static constexpr float MIN_BACKSTEP_DURATION = 0.25f;
-	static constexpr float MAX_BACKSTEP_DURATION = 0.45f;
+	const float MIN_BACKSTEP_DURATION = 0.25f;
+	const float MAX_BACKSTEP_DURATION = 0.45f;
 
-	static constexpr float MIN_WAIT_DURATION = 0.15f;
-	static constexpr float MAX_WAIT_DURATION = 0.45f;
+	const float MIN_WAIT_DURATION = 0.15f;
+	const float MAX_WAIT_DURATION = 0.45f;
 
-	static constexpr float STRAFE_SPEED = 3.0f;
-	static constexpr float BACKSTEP_SPEED = 4.0f;
 };
