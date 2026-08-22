@@ -7,6 +7,7 @@
 
 #include <list>
 #include <array>
+#include <random>
 
 enum class ParticlePsoType : UINT
 {
@@ -34,6 +35,9 @@ class ParticleManager
 	MeshGeometry billboardParticleVertices;
 	UINT billboardParticleCount;
 	std::vector<ShaderParticle> shaderParticles;
+
+	std::random_device randomDevice;
+	std::mt19937 randomEngine;
 public:
 	void Initialize(
 		ID3D12Device* device,

@@ -33,6 +33,8 @@ void ParticleManager::Initialize(
 	BuildParticleMaterialGpuBuffer(commandList);
 
 	shaderParticles.reserve(MAX_BILLBOARD_PARTICLES);
+
+	randomEngine = std::mt19937(randomDevice());
 }
 
 void ParticleManager::BuildParticleRootSignature()
@@ -243,7 +245,7 @@ void ParticleManager::Update(float dt, FrameResource* curFrameResource, const XM
 	shaderParticles.clear();
 
 	for (auto it = particleEmitters.begin(); it != particleEmitters.end();) {
-		it->Update(dt, cameraUp, cameraLook);
+		it->Update(dt, cameraUp, cameraLook, randomEngine);
 		if (it->isFinished) {
 			it = particleEmitters.erase(it);
 		}

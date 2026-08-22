@@ -9,9 +9,13 @@ struct Particle
 	DirectX::XMFLOAT3 up;
 	DirectX::XMFLOAT3 look;
 	DirectX::XMFLOAT4 color;
+	DirectX::XMFLOAT3 velocity;
+	float lifeTime;
+	float rotateSpeed;
 	UINT materialIndex;
 	float timePos = 0.0f;
 	bool isFinished = false;
+	float rotateAngle = 0.0f;
 };
 
 struct ShaderParticle
@@ -64,25 +68,60 @@ struct ParticeRenderer
 {
 	ParticleRenderMode mode;
 	bool localAlignment;
+	DirectX::XMFLOAT3 localRotation;
 	UINT materialIndex;
 };
 
 struct ParticleEmissionShape
 {
 	ParticleEmissionShapeType shape = ParticleEmissionShapeType::CIRCLE;
-	float radius = 0.0f;
 	ParticleEmissionModeType mode = ParticleEmissionModeType::RANDOM;
+	float minRadius = 0.0f;
+	float maxRadius = 0.0f;
+	float loopSpeed = 1.0f;
+};
+
+enum class ParticleChangeMode : int
+{
+	NOT_CHANGE = 0,
+	BIGGER = 1,
+	SMALLER = -1,
+};
+
+struct ParticleMove
+{
+	float startMinSpeed = 0.0f;
+	float startMaxSpeed = 0.0f;
+	ParticleChangeMode mode = ParticleChangeMode::NOT_CHANGE;
+	float changeSpeed = 1.0;
+};
+
+struct ParticleSize
+{
+	float startMinSize = 0.0f;
+	float startMaxSize = 0.0f;
+	ParticleChangeMode mode = ParticleChangeMode::NOT_CHANGE;
+	float changeSpeed = 1.0;
+};
+
+struct ParticleRotation
+{
+	bool rotate[3] = {false, false, false};
+	float startRotationSpeed = 0.0f;
+	ParticleChangeMode mode = ParticleChangeMode::NOT_CHANGE;
+	float changeSpeed = 1.0;
 };
 
 
 struct ParticleProperties
 {
 	bool looping = false;
-	bool startSpeed = 0.0f;
-	DirectX::XMFLOAT3 startSize;
-	DirectX::XMFLOAT3 startRotation;
+	float minLifetime = 1.0f;
+	float maxLifetime = 1.0f;
+	ParticleMove move;
+	ParticleRotation rotation;
+	ParticleSize size;
 	DirectX::XMFLOAT4 startColor;
-	float startLifetime = 1.0f;
 	ParticleEmissionShape emissionShape;
 	ParticeRenderer renderer;
 	ParticleEmissionCount emissionCount;

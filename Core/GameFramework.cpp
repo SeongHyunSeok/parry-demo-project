@@ -1409,11 +1409,19 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 		}
 	}
 
+	auto pComPlayerMesh = WORLD.GetComponent<MeshComponent>(player.GetOwner());
+
 	if (inputManager.IsJustPressed(VK_LBUTTON) && !directionlock) {
 		mParticleManager.CreateParticle(
-			"snow_slash_snowflake",
+			"snow_slash_slash",
+			(Vector3::Add( pComPlayerMesh->Translation, XMFLOAT3(0.0f, 0.2f, 0.0f))),
 			XMFLOAT3(1.0f, 1.0f, 1.0f),
-			XMFLOAT3(10.0f, 10.0f, 0.0f),
+			XMFLOAT3(0.0f, 0.0f, 0.0f)
+		);
+		mParticleManager.CreateParticle(
+			"snow_slash_snowflake",
+			(Vector3::Add(pComPlayerMesh->Translation, XMFLOAT3(0.0f, 0.2f, 0.0f))),
+			XMFLOAT3(1.0f, 1.0f, 1.0f),
 			XMFLOAT3(0.0f, 0.0f, 0.0f)
 		);
 		playerInput.type = InputType::Attack;

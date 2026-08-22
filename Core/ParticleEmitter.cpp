@@ -1,14 +1,17 @@
 #include "ParticleEmitter.h"
 
 ParticleEmitter::ParticleEmitter(
-	DirectX::XMFLOAT3 position,
-	DirectX::XMFLOAT3 size,
+	DirectX::XMFLOAT3 translation,
+	DirectX::XMFLOAT3 scale,
 	DirectX::XMFLOAT3 rotation,
 	const ParticleProperties* const particleProperties
-) : position{position}, size{size}, rotation{rotation}, particleProperties{particleProperties}
-{ }
+) : translation{ translation }, scale{ scale }, rotation{rotation}, particleProperties{particleProperties}
+{
+	baseScale = XMMatrixScaling(scale.x, scale.y, scale.z);
+	baseOffset = XMMatrixTranslation(translation.x, translation.y, translation.z);
+}
 
-void ParticleEmitter::Update(float dt, const XMFLOAT3& cameraUp, const XMFLOAT3& cameraLook)
+void ParticleEmitter::Update(float dt, const XMFLOAT3& cameraUp, const XMFLOAT3& cameraLook, std::mt19937& randomEngine)
 {
 	if (particleProperties == nullptr)
 		return;
@@ -18,7 +21,7 @@ void ParticleEmitter::Update(float dt, const XMFLOAT3& cameraUp, const XMFLOAT3&
 	// Create Particles
 	if (curCycle < particleProperties->emissionCount.cycle) {
 		if (lastCycleTimePose == 0.0f || lastCycleTimePose + particleProperties->emissionCount.interval <= timePos) {
-			Emit();
+			Emit(randomEngine);
 			lastCycleTimePose = timePos;
 			++curCycle;
 			if (particleProperties->looping && curCycle >= particleProperties->emissionCount.cycle) {
@@ -30,7 +33,7 @@ void ParticleEmitter::Update(float dt, const XMFLOAT3& cameraUp, const XMFLOAT3&
 	// Update Particles
 	unsigned int particleCount = particles.size();
 	for (unsigned int i = 0; i < particleCount;) {
-		UpdateParticle(particles[i], dt, particleProperties->startLifetime, cameraUp, cameraLook);
+		UpdateParticle(particles[i], dt, cameraUp, cameraLook);
 
 		if (particles[i].isFinished) {
 			std::swap(particles[i], particles.back());
@@ -48,26 +51,155 @@ void ParticleEmitter::Update(float dt, const XMFLOAT3& cameraUp, const XMFLOAT3&
 	}
 }
 
-void ParticleEmitter::Emit() {
+void ParticleEmitter::Emit(std::mt19937& randomEngine) {
+
+	std::uniform_real_distribution<float> radiusDistribution(
+		particleProperties->emissionShape.minRadius, 
+		particleProperties->emissionShape.maxRadius);
+	std::uniform_real_distribution<float> angleDistribution(0, 2 * MathHelper::Pi);
+	std::uniform_real_distribution<float> sphereDistribution(-1.0f, 1.0f);
+	std::uniform_real_distribution<float> speedDistribution(particleProperties->move.startMinSpeed, particleProperties->move.startMaxSpeed);
+
 	for (int i = 0; i < particleProperties->emissionCount.count; ++i) {
+		XMMATRIX particleRotation = XMMatrixIdentity();
+		DirectX::XMVECTOR particlePosition = { 0.0f, 0.0f, particleProperties->emissionShape.maxRadius, 1.0f };
+		XMFLOAT3 particleDirection = { 0.0f, 0.0f, 0.0f };
+		
+		switch (particleProperties->emissionShape.mode) {
+		case ParticleEmissionModeType::RANDOM: {
+			float radius = radiusDistribution(randomEngine);
+
+			switch (particleProperties->emissionShape.shape) {
+			case ParticleEmissionShapeType::CIRCLE: {
+				particlePosition = { 0.0f, 0.0f, radius, 1.0f };
+
+				float angle = angleDistribution(randomEngine);
+				particleRotation = XMMatrixRotationY(angle + rotation.y) * XMMatrixRotationX(rotation.x) * XMMatrixRotationZ(rotation.z);
+
+				XMStoreFloat3(&particleDirection, XMVector3Normalize(XMVector4Transform(particlePosition, particleRotation)));
+				break;
+			}
+			case ParticleEmissionShapeType::SPHERE:
+			case ParticleEmissionShapeType::HEMISPHERE:
+			{
+				particlePosition = {
+					sphereDistribution(randomEngine),
+					sphereDistribution(randomEngine),
+					sphereDistribution(randomEngine),
+					0.0f
+				};
+
+				if (particleProperties->emissionShape.shape == ParticleEmissionShapeType::HEMISPHERE) {
+					if (particlePosition.m128_f32[1] < 0) {
+						particlePosition.m128_f32[1] = -particlePosition.m128_f32[1];
+					}
+					particleRotation = XMMatrixRotationY(rotation.y) * XMMatrixRotationX(rotation.x) * XMMatrixRotationZ(rotation.z);
+				}
+				particlePosition = XMVector3Normalize(particlePosition);
+				XMStoreFloat3(&particleDirection, particlePosition);
+
+				particlePosition = radius * particlePosition;
+				particlePosition.m128_f32[3] = 1.0f;
+				break;
+			}
+			}
+			break;
+		}
+		case ParticleEmissionModeType::LOOP: {
+			float angle = (timePos * particleProperties->emissionShape.loopSpeed) + float(i/10.0f) ;
+
+			particleRotation = XMMatrixRotationY(angle + rotation.y) * XMMatrixRotationX(rotation.x) * XMMatrixRotationZ(rotation.z);
+
+			XMStoreFloat3(&particleDirection, XMVector3Normalize(XMVector4Transform(particlePosition, particleRotation)));
+			break;
+		}
+		};
+
+
+		XMMATRIX transform = baseScale * particleRotation * baseOffset;
+		particlePosition = XMVector4Transform(particlePosition, transform);
+
+		XMFLOAT3 pos;
+		XMStoreFloat3(&pos, particlePosition);
+		// apply base size
+		
+		XMFLOAT3 localRotation = particleProperties->renderer.localRotation;
+		XMMATRIX emitterRotation = XMMatrixRotationY(rotation.y + localRotation.y) * XMMatrixRotationX(rotation.x + localRotation.x) * XMMatrixRotationZ(rotation.z + localRotation.z);
+		XMFLOAT3 up;
+		XMStoreFloat3(&up, XMVector4Transform(XMVECTOR{ 0.0f, 1.0f, 0.0f, 1.0f }, emitterRotation));
+		XMFLOAT3 look;
+		XMStoreFloat3(&look, XMVector4Transform(XMVECTOR{ 0.0f, 0.0f, 1.0f, 1.0f }, emitterRotation));
+
 		particles.emplace_back(Particle(
-			position,
-			particleProperties->startSize,
-			{ 0.0f, 1.0f, 0.0f },
-			{ 0.0f, 0.0f, -1.0f },
+			{ pos },
+			{ particleProperties->size.startMinSize , particleProperties->size.startMinSize, 0.0f},
+			up,
+			look,
 			particleProperties->startColor,
+			Vector3::ScalarProduct(particleDirection, speedDistribution(randomEngine)),
+			particleProperties->minLifetime,
+			particleProperties->rotation.startRotationSpeed,
 			particleProperties->renderer.materialIndex
 		));
 	}
 }
 
-void ParticleEmitter::UpdateParticle(Particle& particle, float dt, float startLifetime, const XMFLOAT3& cameraUp, const XMFLOAT3& cameraLook) {
-	particle.up = cameraUp;
-	particle.look = cameraLook;
-	particle.timePos += dt;
-	particle.position.y += 0.05f;
 
-	if (startLifetime <= particle.timePos) {
+void ParticleEmitter::UpdateParticle(Particle& particle, float dt, const XMFLOAT3& cameraUp, const XMFLOAT3& cameraLook) {
+	particle.timePos += dt;
+
+	particle.rotateSpeed += dt * 10 * (particleProperties->rotation.changeSpeed) * ((int)particleProperties->rotation.mode);
+	particle.rotateSpeed = max(0.0f, particle.rotateSpeed);
+	particle.rotateAngle += (dt * particle.rotateSpeed);
+
+	if (!particleProperties->renderer.localAlignment) {
+		particle.up = cameraUp;
+		particle.look = cameraLook;
+
+		XMVECTOR lookVector = XMLoadFloat3(&particle.look);
+		XMVECTOR upVector = XMLoadFloat3(&particle.up);
+		if (particleProperties->rotation.rotate[2]) {
+			XMMATRIX rotation = XMMatrixRotationAxis(lookVector, particle.rotateAngle);
+			XMVECTOR rotatedUp = XMVector4Transform(upVector, rotation);
+			XMStoreFloat3(&particle.up, rotatedUp);
+		}
+	}
+	else {
+		XMVECTOR lookVector = XMLoadFloat3(&particle.look);
+		XMVECTOR upVector = XMLoadFloat3(&particle.up);
+		float changeAngle = dt * particle.rotateSpeed;
+		if (particleProperties->rotation.rotate[0]) {
+			XMVECTOR rightVector = XMVector3Normalize(XMVector3Cross(lookVector, upVector));
+			XMMATRIX rotation = XMMatrixRotationAxis(rightVector, changeAngle);
+
+			XMVECTOR rotatedLook = XMVector4Transform(lookVector, rotation);
+			XMStoreFloat3(&particle.look, rotatedLook);
+			XMVECTOR rotatedUp = XMVector4Transform(upVector, rotation);
+			XMStoreFloat3(&particle.up, rotatedUp);
+		}
+		else if (particleProperties->rotation.rotate[1]) {
+			XMMATRIX rotation = XMMatrixRotationAxis(upVector, changeAngle);
+			XMVECTOR rotatedLook = XMVector4Transform(lookVector, rotation);
+			XMStoreFloat3(&particle.look, rotatedLook);
+		}
+		else if (particleProperties->rotation.rotate[2]) {
+			XMMATRIX rotation = XMMatrixRotationAxis(lookVector, changeAngle);
+			XMVECTOR rotatedUp = XMVector4Transform(upVector, rotation);
+			XMStoreFloat3(&particle.up, rotatedUp);
+		}
+	}
+	
+	float speed = Vector3::Length(particle.velocity);
+	speed += dt * 10 * (particleProperties->move.changeSpeed) * ((int)particleProperties->move.mode);
+	if (speed < 0.0f) {
+		particle.isFinished = true;
+		return;
+	}
+	particle.velocity = Vector3::ScalarProduct(particle.velocity, speed, true);
+	particle.position = Vector3::Add(particle.position, particle.velocity, dt);
+
+	if (particle.lifeTime <= particle.timePos) {
 		particle.isFinished = true;
 	}
+
 }
