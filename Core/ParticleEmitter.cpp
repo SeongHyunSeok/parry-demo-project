@@ -54,17 +54,19 @@ void ParticleEmitter::Update(float dt, const XMFLOAT3& cameraUp, const XMFLOAT3&
 void ParticleEmitter::Emit(std::mt19937& randomEngine) {
 
 	std::uniform_real_distribution<float> radiusDistribution(
-		particleProperties->emissionShape.minRadius, 
+		particleProperties->emissionShape.minRadius,
 		particleProperties->emissionShape.maxRadius);
 	std::uniform_real_distribution<float> angleDistribution(0, 2 * MathHelper::Pi);
 	std::uniform_real_distribution<float> sphereDistribution(-1.0f, 1.0f);
 	std::uniform_real_distribution<float> speedDistribution(particleProperties->move.startMinSpeed, particleProperties->move.startMaxSpeed);
+	std::uniform_real_distribution<float> lifetimeDistribution(particleProperties->minLifetime, particleProperties->maxLifetime);
+	std::uniform_real_distribution<float> sizeDistribution(particleProperties->size.startMinSize, particleProperties->size.startMaxSize);
 
 	for (int i = 0; i < particleProperties->emissionCount.count; ++i) {
 		XMMATRIX particleRotation = XMMatrixIdentity();
 		DirectX::XMVECTOR particlePosition = { 0.0f, 0.0f, particleProperties->emissionShape.maxRadius, 1.0f };
 		XMFLOAT3 particleDirection = { 0.0f, 0.0f, 0.0f };
-		
+
 		switch (particleProperties->emissionShape.mode) {
 		case ParticleEmissionModeType::RANDOM: {
 			float radius = radiusDistribution(randomEngine);
@@ -130,17 +132,20 @@ void ParticleEmitter::Emit(std::mt19937& randomEngine) {
 		XMFLOAT3 look;
 		XMStoreFloat3(&look, XMVector4Transform(XMVECTOR{ 0.0f, 0.0f, 1.0f, 1.0f }, emitterRotation));
 
-		particles.emplace_back(Particle(
+		const float startSize = sizeDistribution(randomEngine);
+		Particle particle(
 			{ pos },
-			{ particleProperties->size.startMinSize , particleProperties->size.startMinSize, 0.0f},
+			{ startSize, startSize, 0.0f},
 			up,
 			look,
 			particleProperties->startColor,
 			Vector3::ScalarProduct(particleDirection, speedDistribution(randomEngine)),
-			particleProperties->minLifetime,
+			lifetimeDistribution(randomEngine),
 			particleProperties->rotation.startRotationSpeed,
 			particleProperties->renderer.materialIndex
-		));
+		);
+		particle.rotateAngle = angleDistribution(randomEngine);
+		particles.emplace_back(particle);
 	}
 }
 
@@ -153,8 +158,20 @@ void ParticleEmitter::UpdateParticle(Particle& particle, float dt, const XMFLOAT
 	particle.rotateAngle += (dt * particle.rotateSpeed);
 
 	if (!particleProperties->renderer.localAlignment) {
-		particle.up = cameraUp;
 		particle.look = cameraLook;
+		particle.up = cameraUp;
+
+		if (particleProperties->renderer.alignToVelocity) {
+			const XMVECTOR lookVector = XMVector3Normalize(XMLoadFloat3(&particle.look));
+			const XMVECTOR velocityVector = XMLoadFloat3(&particle.velocity);
+			const XMVECTOR projectedVelocity = XMVectorSubtract(
+				velocityVector,
+				XMVectorMultiply(XMVector3Dot(velocityVector, lookVector), lookVector));
+
+			if (XMVectorGetX(XMVector3LengthSq(projectedVelocity)) > 0.000001f) {
+				XMStoreFloat3(&particle.up, XMVector3Normalize(projectedVelocity));
+			}
+		}
 
 		XMVECTOR lookVector = XMLoadFloat3(&particle.look);
 		XMVECTOR upVector = XMLoadFloat3(&particle.up);
@@ -195,8 +212,22 @@ void ParticleEmitter::UpdateParticle(Particle& particle, float dt, const XMFLOAT
 		particle.isFinished = true;
 		return;
 	}
-	particle.velocity = Vector3::ScalarProduct(particle.velocity, speed, true);
+	if (speed > 0.000001f) {
+		particle.velocity = Vector3::ScalarProduct(particle.velocity, speed, true);
+	}
 	particle.position = Vector3::Add(particle.position, particle.velocity, dt);
+
+	const float sizeDelta = dt * 10 * particleProperties->size.changeSpeed * ((int)particleProperties->size.mode);
+	particle.size.x = max(0.0f, particle.size.x + sizeDelta);
+	particle.size.y = max(0.0f, particle.size.y + sizeDelta);
+
+	if (particleProperties->renderer.fadeOut && particle.lifeTime > 0.0f) {
+		const float lifeRatio = max(0.0f, 1.0f - particle.timePos / particle.lifeTime);
+		particle.color.x = particleProperties->startColor.x * lifeRatio;
+		particle.color.y = particleProperties->startColor.y * lifeRatio;
+		particle.color.z = particleProperties->startColor.z * lifeRatio;
+		particle.color.w = particleProperties->startColor.w * lifeRatio;
+	}
 
 	if (particle.lifeTime <= particle.timePos) {
 		particle.isFinished = true;

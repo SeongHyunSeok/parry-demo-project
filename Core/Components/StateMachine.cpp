@@ -3,6 +3,8 @@
 #include "Animation.h"
 #include "Player.h"
 #include "Mesh.h"
+#include "../AudioManager.h"
+#include "../../Assets/AnimationAudio.h"
 
 namespace
 {
@@ -27,15 +29,56 @@ StateMachineComponent::StateMachineComponent(
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>>&& states,
 	StateType initialState
 ) : Component{ owner } {
-	this->states = move(states);
-	currentState = this->states[initialState].get();
+	Reset(move(states), initialState);
+}
+
+void StateMachineComponent::Reset(
+	std::unordered_map<StateType, std::unique_ptr<CharacterState>>&& initialStates,
+	StateType initialState)
+{
+	if (currentState)
+		currentState->Leave(this);
+	states = move(initialStates);
+	currentState = states.at(initialState).get();
 	currentStateType = initialState;
+	attackSoundPlayed = false;
+	fatalHitSoundPlayed = false;
 	currentState->Enter(this, StateProperty());
 }
 
 void StateMachineComponent::Update()
 {
 	currentState->Update(this);
+}
+
+void StateMachineComponent::UpdateCombatAudio()
+{
+	auto animation = WORLD.GetComponent<AnimationComponent>(GetOwner());
+	if (!animation || !animation->mSkinnedModelAnimationController) return;
+	const auto& controller = *animation->mSkinnedModelAnimationController;
+	const auto& play = controller.animationPlayInfos[controller.curAnimationPlayIndex];
+
+	if (currentStateType == StateType::Attack && !attackSoundPlayed)
+	{
+		const auto timing = AnimationAudio::SwordSlashTimePositions.find(play.animationType);
+		// Testing a crossed threshold also works when a fast animation skips a frame.
+		if (timing != AnimationAudio::SwordSlashTimePositions.end() &&
+			play.timePosition >= timing->second)
+		{
+			attackSoundPlayed = true;
+			AudioManager::GetInstance().PlaySfx(SoundId::SwordSlash);
+		}
+	}
+	else if (currentStateType == StateType::Hit && !fatalHitSoundPlayed)
+	{
+		const auto timing = AnimationAudio::FatalHitTimePositions.find(play.animationType);
+		if (timing != AnimationAudio::FatalHitTimePositions.end() &&
+			play.timePosition >= timing->second)
+		{
+			fatalHitSoundPlayed = true;
+			AudioManager::GetInstance().PlaySfx(SoundId::FatalHit);
+		}
+	}
 }
 
 void StateMachineComponent::HandleInput(const PlayerInupt& playerInput)
@@ -75,6 +118,8 @@ void StateMachineComponent::ChangeState(StateType targetStateType, StateProperty
 	currentState->Leave(this);
 	currentState = states[targetStateType].get();
 	currentStateType = targetStateType;
+	attackSoundPlayed = false;
+	fatalHitSoundPlayed = false;
 	currentState->Enter(this, stateProperty);
 }
 
@@ -83,7 +128,20 @@ void StateMachineComponent::SetOwnerAnimation(AnimationType animationType, float
 	auto hOwner = GetOwner();
 	auto pComAni = WORLD.GetComponent<AnimationComponent>(owner);
 	if (pComAni) {
+		const auto& controller = *pComAni->mSkinnedModelAnimationController;
+		if (controller.animationPlayInfos[controller.curAnimationPlayIndex].animationType != animationType)
+			attackSoundPlayed = false;
 		pComAni->mSkinnedModelAnimationController->SetAnimation(animationType, speed);
+	}
+}
+
+void StateMachineComponent::RestartOwnerAnimation(AnimationType animationType, float speed)
+{
+	auto animation = WORLD.GetComponent<AnimationComponent>(GetOwner());
+	if (animation && animation->mSkinnedModelAnimationController)
+	{
+		attackSoundPlayed = false;
+		animation->mSkinnedModelAnimationController->RestartAnimation(animationType, speed);
 	}
 }
 
@@ -92,6 +150,9 @@ void StateMachineComponent::SetOwnerAnimation(AnimationType animationType)
 	auto hOwner = GetOwner();
 	auto pComAni = WORLD.GetComponent<AnimationComponent>(owner);
 	if (pComAni) {
+		const auto& controller = *pComAni->mSkinnedModelAnimationController;
+		if (controller.animationPlayInfos[controller.curAnimationPlayIndex].animationType != animationType)
+			attackSoundPlayed = false;
 		pComAni->mSkinnedModelAnimationController->SetAnimation(animationType);
 	}
 }
@@ -838,7 +899,7 @@ void EnemyAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty
 		if (maxComboCount > 0)
 		{
 			// 기존 PlayerAttackState의 TwoHand B_1 또는 OneHand C_1 선택
-			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
+			pStateMachine->RestartOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
 		}
 		return;
 	}
@@ -852,14 +913,14 @@ void EnemyAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty
 			maxComboCount = twoHand? MAX_TwoHand_COMBO_COUNT: MAX_OneHand_COMBO_COUNT;
 			currentComboCount = 0;
 
-			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
+			pStateMachine->RestartOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
 
 			return;
 		}
 
 		maxComboCount = 0;
 
-		pStateMachine->SetOwnerAnimation(GetEnemyAttackAnimation(currentPattern), attackAnimationSpeed);
+		pStateMachine->RestartOwnerAnimation(GetEnemyAttackAnimation(currentPattern), attackAnimationSpeed);
 
 		return;
 	}
@@ -1139,6 +1200,24 @@ bool EnemyWalkState::IsTimedPattern() const
 
 void EnemyPatternState::Enter(StateMachineComponent* pStateMachine, StateProperty property)
 {
+	const auto& sequence = sequenceSettings;
+	if (sequenceCursor.Sync(sequence))
+	{
+		previousPattern = EnemyPattern::None;
+		consecutiveAttackCount = 0;
+	}
+	const bool oneHand = CanUseEnemyAttack(pStateMachine);
+	const auto next = sequenceCursor.Peek(sequence);
+	const bool waiting = sequence.useFixedOrder
+		? next == EnemyPattern::None || (IsOneHandOnlyPattern(next) && !oneHand)
+		: !HasUsableEnemyPatternEntries(sequence, oneHand);
+	// Empty/completed lists and unavailable weapons wait without consuming a row.
+	if (waiting)
+	{
+		ExecutePattern(pStateMachine, EnemyPattern::Wait);
+		return;
+	}
+
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
 	bool checkResult = pStateMachine->CheckDistAndSetToFaceOpponent(player.GetOwner(), ATTACK_DISTANCE);
 
@@ -1171,201 +1250,172 @@ void EnemyPatternState::HandleEvent(StateMachineComponent * pStateMachine, GameE
 
 EnemyPattern EnemyPatternState::SelectPattern(StateMachineComponent* pStateMachine)
 {
-	float distance;
+	if (sequenceSettings.useFixedOrder)
+	{
+		const auto selected = sequenceCursor.Peek(sequenceSettings);
+		sequenceCursor.Advance(sequenceSettings);
+		return selected;
+	}
+
+	float distance = ATTACK_DISTANCE;
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
 	pStateMachine->CheckDistAndSetToFaceOpponent(player.GetOwner(), ATTACK_DISTANCE, &distance);
-	
+
+	EnemyPattern selected = EnemyPattern::None;
 	if (IsWatchingPattern(previousPattern))
 	{
-		auto attackPatterns = BuildAttackPatterns(pStateMachine, distance);
-		EnemyPattern selected = SelectWeightedPattern(attackPatterns);
+		selected = SelectWeightedPattern(BuildAttackPatterns(pStateMachine, distance));
+		if (selected == EnemyPattern::None)
+			selected = SelectWeightedPattern(BuildWatchingPatterns(distance));
+	}
+	else if (consecutiveAttackCount >= MAX_CONSECUTIVE_ATTACK_COUNT)
+	{
+		selected = SelectWeightedPattern(BuildWatchingPatterns(distance));
+		// A list containing only attacks cannot satisfy the watching rule.
+		// Keep using the applied list instead of injecting an unlisted action.
 		if (selected == EnemyPattern::None)
 		{
-			auto watchingPatterns = BuildWatchingPatterns(distance);
-			selected = SelectWeightedPattern(watchingPatterns);
+			auto attacks = BuildAttackPatterns(pStateMachine, distance);
+			DisablePreviousAttack(attacks);
+			selected = SelectWeightedPattern(attacks);
+			if (selected == EnemyPattern::None)
+				selected = SelectWeightedPattern(BuildAttackPatterns(pStateMachine, distance));
 		}
-
-		UpdatePatternHistory(selected);
-
-		return selected;
 	}
-
-	if (consecutiveAttackCount >= MAX_CONSECUTIVE_ATTACK_COUNT)
+	else
 	{
+		auto patterns = BuildAttackPatterns(pStateMachine, distance);
 		auto watchingPatterns = BuildWatchingPatterns(distance);
-		EnemyPattern selected = SelectWeightedPattern(watchingPatterns);
+		patterns.insert(patterns.end(), watchingPatterns.begin(), watchingPatterns.end());
 
-		UpdatePatternHistory(selected);
-
-		return selected;
+		DisablePreviousAttack(patterns);
+		selected = SelectWeightedPattern(patterns);
+		if (selected == EnemyPattern::None)
+		{
+			// A single-entry list is still valid even when it matches the previous attack.
+			patterns = BuildAttackPatterns(pStateMachine, distance);
+			watchingPatterns = BuildWatchingPatterns(distance);
+			patterns.insert(patterns.end(), watchingPatterns.begin(), watchingPatterns.end());
+			selected = SelectWeightedPattern(patterns);
+		}
 	}
-	auto patterns = BuildAttackPatterns(pStateMachine, distance);
-	DisablePreviousAttack(patterns);
-	auto watchingPatterns = BuildWatchingPatterns(distance);
-
-	patterns.insert(patterns.end(),watchingPatterns.begin(), watchingPatterns.end());
-
-	EnemyPattern selected = SelectWeightedPattern(patterns);
 
 	UpdatePatternHistory(selected);
-
 	return selected;
 }
 
 EnemyPattern EnemyPatternState::SelectWeightedPattern(const std::vector<PatternWeight>& patterns)
 {
 	int totalWeight = 0;
-
-	for (const PatternWeight& data : patterns)
-	{
+	for (const auto& data : patterns)
 		if (data.weight > 0)
-		{
 			totalWeight += data.weight;
-		}
-	}
-
 	if (totalWeight <= 0)
-	{
 		return EnemyPattern::None;
-	}
 
 	std::uniform_int_distribution<int> distribution(1, totalWeight);
-	int randomValue = distribution(GetEnemyRandomGenerator());
+	const int randomValue = distribution(GetEnemyRandomGenerator());
 	int accumulatedWeight = 0;
-
-	for (const PatternWeight& data : patterns)
+	for (const auto& data : patterns)
 	{
 		if (data.weight <= 0)
-		{
 			continue;
-		}
-
-		accumulatedWeight +=
-			data.weight;
-
-		if (randomValue <=
-			accumulatedWeight)
-		{
+		accumulatedWeight += data.weight;
+		if (randomValue <= accumulatedWeight)
 			return data.pattern;
-		}
 	}
-
-
 	return EnemyPattern::None;
 }
 
-std::vector<EnemyPatternState::PatternWeight> EnemyPatternState::BuildAttackPatterns(StateMachineComponent* pStateMachine, float distance)
+std::vector<EnemyPatternState::PatternWeight> EnemyPatternState::BuildAttackPatterns(
+	StateMachineComponent* pStateMachine, float distance)
 {
 	std::vector<PatternWeight> patterns;
-	bool canUseEnemyAttack = CanUseEnemyAttack(pStateMachine);
-
-	if (canUseEnemyAttack)
+	if (CanUseEnemyAttack(pStateMachine))
 	{
 		if (distance <= CLOSE_DISTANCE)
 		{
-			patterns =
-			{
-				{ EnemyPattern::EnemyAttack1,        18 },
-				{ EnemyPattern::EnemyAttack2,        15 },
-				{ EnemyPattern::EnemyAttack3,        12 },
-
-				{ EnemyPattern::EnemyAttack1Offbeat,  8 },
-				{ EnemyPattern::EnemyAttack2Offbeat,  7 },
-				{ EnemyPattern::EnemyAttack3Offbeat,  5 },
-
-				{ EnemyPattern::Combo,                5 }
+			patterns = {
+				{ EnemyPattern::EnemyAttack1, 18 }, { EnemyPattern::EnemyAttack2, 15 },
+				{ EnemyPattern::EnemyAttack3, 12 }, { EnemyPattern::EnemyAttack1Offbeat, 8 },
+				{ EnemyPattern::EnemyAttack2Offbeat, 7 }, { EnemyPattern::EnemyAttack3Offbeat, 5 },
+				{ EnemyPattern::Combo, 5 }
 			};
 		}
 		else if (distance <= MID_DISTANCE)
 		{
-			patterns =
-			{
-				{ EnemyPattern::EnemyAttack1,        14 },
-				{ EnemyPattern::EnemyAttack2,        14 },
-				{ EnemyPattern::EnemyAttack3,        13 },
-
-				{ EnemyPattern::EnemyAttack1Offbeat,  9 },
-				{ EnemyPattern::EnemyAttack2Offbeat,  8 },
-				{ EnemyPattern::EnemyAttack3Offbeat,  7 },
-
-				{ EnemyPattern::Combo,                7 }
+			patterns = {
+				{ EnemyPattern::EnemyAttack1, 14 }, { EnemyPattern::EnemyAttack2, 14 },
+				{ EnemyPattern::EnemyAttack3, 13 }, { EnemyPattern::EnemyAttack1Offbeat, 9 },
+				{ EnemyPattern::EnemyAttack2Offbeat, 8 }, { EnemyPattern::EnemyAttack3Offbeat, 7 },
+				{ EnemyPattern::Combo, 7 }
 			};
 		}
 		else
 		{
-			patterns =
-			{
-				{ EnemyPattern::EnemyAttack1,        10 },
-				{ EnemyPattern::EnemyAttack2,        12 },
-				{ EnemyPattern::EnemyAttack3,        13 },
-
-				{ EnemyPattern::EnemyAttack1Offbeat,  9 },
-				{ EnemyPattern::EnemyAttack2Offbeat,  9 },
-				{ EnemyPattern::EnemyAttack3Offbeat,  8 },
-
-				{ EnemyPattern::Combo,                9 }
+			patterns = {
+				{ EnemyPattern::EnemyAttack1, 10 }, { EnemyPattern::EnemyAttack2, 12 },
+				{ EnemyPattern::EnemyAttack3, 13 }, { EnemyPattern::EnemyAttack1Offbeat, 9 },
+				{ EnemyPattern::EnemyAttack2Offbeat, 9 }, { EnemyPattern::EnemyAttack3Offbeat, 8 },
+				{ EnemyPattern::Combo, 9 }
 			};
 		}
-
-		DisableUncheckedAttacks(patterns);
-
-		return patterns;
-	}
-
-	if (distance <= CLOSE_DISTANCE)
-	{
-		patterns.push_back({ EnemyPattern::Combo, 50 });
-	}
-	else if (distance <= MID_DISTANCE)
-	{
-		patterns.push_back({ EnemyPattern::Combo, 45 });
 	}
 	else
 	{
-		patterns.push_back({ EnemyPattern::Combo, 40 });
+		patterns.push_back({ EnemyPattern::Combo,
+			distance <= CLOSE_DISTANCE ? 50 : (distance <= MID_DISTANCE ? 45 : 40) });
 	}
-
+	ApplySequenceWeights(patterns);
 	return patterns;
 }
 
 std::vector<EnemyPatternState::PatternWeight> EnemyPatternState::BuildWatchingPatterns(float distance)
 {
 	std::vector<PatternWeight> patterns;
-
 	if (distance <= CLOSE_DISTANCE)
-	{
-		patterns =
-		{
-			{ EnemyPattern::StrafeLeft,   8 },
-			{ EnemyPattern::StrafeRight,  8 },
-			// 너무 가까우면 후퇴 확률 증가
-			{ EnemyPattern::BackStep,    10 },
-			{ EnemyPattern::Wait,         4 }
-		};
-	}
-
-	if (distance > CLOSE_DISTANCE && distance <= MID_DISTANCE)
-	{
-		patterns =
-		{
-			{ EnemyPattern::StrafeLeft,  10 },
-			{ EnemyPattern::StrafeRight, 10 },
-			{ EnemyPattern::BackStep,     3 },
-			{ EnemyPattern::Wait,         7 }
-		};
-	}
-	if (distance > MID_DISTANCE && distance <= ATTACK_DISTANCE)
-	{
-		patterns =
-		{
-			{ EnemyPattern::StrafeLeft,  10 },
-			{ EnemyPattern::StrafeRight, 10 },
-			{ EnemyPattern::BackStep,     0 },
-			{ EnemyPattern::Wait,        10 }
-		};
-	}
-
+		patterns = {{EnemyPattern::StrafeLeft, 8}, {EnemyPattern::StrafeRight, 8},
+			{EnemyPattern::BackStep, 10}, {EnemyPattern::Wait, 4}};
+	else if (distance <= MID_DISTANCE)
+		patterns = {{EnemyPattern::StrafeLeft, 10}, {EnemyPattern::StrafeRight, 10},
+			{EnemyPattern::BackStep, 3}, {EnemyPattern::Wait, 7}};
+	else
+		patterns = {{EnemyPattern::StrafeLeft, 10}, {EnemyPattern::StrafeRight, 10},
+			{EnemyPattern::BackStep, 0}, {EnemyPattern::Wait, 10}};
+	ApplySequenceWeights(patterns);
 	return patterns;
+}
+
+void EnemyPatternState::ApplySequenceWeights(std::vector<PatternWeight>& patterns) const
+{
+	for (auto& data : patterns)
+		data.weight = ApplyEnemyPatternEntryWeight(sequenceSettings, data.pattern, data.weight);
+}
+
+void EnemyPatternState::UpdatePatternHistory(EnemyPattern pattern)
+{
+	previousPattern = pattern;
+	if (pattern == EnemyPattern::Combo)
+	{
+		consecutiveAttackCount = MAX_CONSECUTIVE_ATTACK_COUNT;
+		return;
+	}
+	if (IsAttackPattern(pattern))
+		++consecutiveAttackCount;
+	else
+		consecutiveAttackCount = 0;
+}
+
+void EnemyPatternState::DisablePreviousAttack(std::vector<PatternWeight>& patterns) const
+{
+	if (!IsAttackPattern(previousPattern))
+		return;
+	for (auto& data : patterns)
+		if (data.pattern == previousPattern)
+		{
+			data.weight = 0;
+			return;
+		}
 }
 
 void EnemyPatternState::ExecutePattern(StateMachineComponent* pStateMachine, EnemyPattern pattern)
@@ -1393,72 +1443,12 @@ void EnemyPatternState::ExecutePattern(StateMachineComponent* pStateMachine, Ene
 	}
 }
 
-void EnemyPatternState::UpdatePatternHistory(EnemyPattern pattern)
-{
-	previousPattern = pattern;
-
-	// Combo 자체가 긴 공격 패턴이므로
-	// 끝난 다음에는 반드시 간보기 행동이 나오게 함
-	if (pattern == EnemyPattern::Combo)
-	{
-		consecutiveAttackCount = MAX_CONSECUTIVE_ATTACK_COUNT;
-		return;
-	}
-
-	if (IsAttackPattern(pattern))
-	{
-		++consecutiveAttackCount;
-	}
-	else
-	{
-		consecutiveAttackCount = 0;
-	}
-}
-
-void EnemyPatternState::DisablePreviousAttack(std::vector<PatternWeight>& patterns) const
-{
-	if (!IsAttackPattern(previousPattern))
-	{
-		return;
-	}
-
-	for (PatternWeight& data : patterns)
-	{
-		if (data.pattern == previousPattern)
-		{
-			data.weight = 0;
-			break;
-		}
-	}
-}
-
-void EnemyPatternState::DisableUncheckedAttacks(std::vector<PatternWeight>& patterns) const
-{
-	for (PatternWeight& data : patterns)
-	{
-		if (IsAttackPattern(data.pattern) && !attackPatternSettings.IsEnabled(data.pattern))
-		{
-			data.weight = 0;
-		}
-	}
-}
-
 bool EnemyPatternState::CanUseEnemyAttack(StateMachineComponent* pStateMachine)
 {
-	auto hOwner = pStateMachine->GetOwner();
-	auto pEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
-
-	if (!pEquipmentOwner)
-	{
-		return false;
-	}
-
-	if (pEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword])
-	{
-		return false;
-	}
-
-	return true;
+	const auto equipment = WORLD.GetComponent<EquipmentOwnerComponent>(pStateMachine->GetOwner());
+	return equipment
+		&& equipment->equipments[(UINT)EquipmentType::OneHandSword].has_value()
+		&& !equipment->equipments[(UINT)EquipmentType::TwoHandSword].has_value();
 }
 
 bool EnemyPatternState::IsAttackPattern(EnemyPattern pattern) const
@@ -1491,9 +1481,7 @@ bool EnemyPatternState::IsWatchingPattern(EnemyPattern pattern) const
 	case EnemyPattern::BackStep:
 	case EnemyPattern::Wait:
 		return true;
-
 	default:
 		return false;
 	}
 }
-

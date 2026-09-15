@@ -50,6 +50,10 @@ public:
 		mouseMotion.x = 0;
 		mouseMotion.y = 0;
 	}
+	inline void Reset() {
+		buttonStates.fill(0);
+		mouseMotion = XMINT2{ 0, 0 };
+	}
 	inline void HandleNewMousePosition(int x, int y) {
 		mousePosition = XMINT2{ x, y };
 	}

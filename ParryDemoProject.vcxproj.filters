@@ -123,6 +123,9 @@
     <ClCompile Include="Core\ParticleManager.cpp">
       <Filter>Core</Filter>
     </ClCompile>
+    <ClCompile Include="Core\AudioManager.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Camera.h">
@@ -279,6 +282,15 @@
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="Assets\Particles.h">
+      <Filter>Assets</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\AudioManager.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\EnemyPatternSequence.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Assets\AnimationAudio.h">
       <Filter>Assets</Filter>
     </ClInclude>
   </ItemGroup>

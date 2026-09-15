@@ -4,6 +4,7 @@
 #include "../GameEvent.h"
 #include "../world.h"
 #include "../../Model/Animation.h"
+#include "../EnemyPatternSequence.h"
 
 #include <chrono>
 
@@ -17,45 +18,6 @@ enum class StateType : unsigned int
 	Hit,
 	Parried,
 	Pattern
-};
-
-enum class EnemyPattern : unsigned int
-{
-	None,
-	EnemyAttack1,
-	EnemyAttack2,
-	EnemyAttack3,
-	EnemyAttack1Offbeat,
-	EnemyAttack2Offbeat,
-	EnemyAttack3Offbeat,
-
-	Combo,
-
-	StrafeLeft,
-	StrafeRight,
-	BackStep,
-	Wait
-};
-
-struct EnemyAttackPatternSettings
-{
-	static constexpr unsigned int PATTERN_COUNT = 7;
-
-	bool enabled[PATTERN_COUNT] = { true, true, true, true, true, true, true };
-
-	bool IsEnabled(EnemyPattern pattern) const
-	{
-		const unsigned int patternIndex = static_cast<unsigned int>(pattern);
-		const unsigned int firstAttackIndex = static_cast<unsigned int>(EnemyPattern::EnemyAttack1);
-		const unsigned int comboIndex = static_cast<unsigned int>(EnemyPattern::Combo);
-
-		if (patternIndex < firstAttackIndex || patternIndex > comboIndex)
-		{
-			return true;
-		}
-
-		return enabled[patternIndex - firstAttackIndex];
-	}
 };
 
 struct StateProperty
@@ -86,6 +48,9 @@ public:
 	StateMachineComponent(StateMachineComponent&&) = default;
 
 	void Update();
+	void Reset(std::unordered_map<StateType, std::unique_ptr<CharacterState>>&& initialStates,
+		StateType initialState);
+	void UpdateCombatAudio();
 	void HandleInput(const PlayerInupt& playerInput);
 	void HandleGameEvent(GameEvent& event);
 
@@ -93,6 +58,7 @@ public:
 	void ChangeState(StateType targetStateType, StateProperty property);
 	void SetOwnerAnimation(AnimationType animationType);
 	void SetOwnerAnimation(AnimationType animationType, float speed);
+	void RestartOwnerAnimation(AnimationType animationType, float speed);
 	bool CheckAnimationEnd();
 	bool IsInValidFrame(float offset = 0.0f);
 	bool IsAnimationStarting();
@@ -102,12 +68,15 @@ private:
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> states;
 	CharacterState* currentState = nullptr;
 	StateType currentStateType = StateType::Idle;
+	bool attackSoundPlayed = false;
+	bool fatalHitSoundPlayed = false;
 };
 
 class CharacterState
 {
 public:
 	CharacterState() {}
+	virtual ~CharacterState() noexcept = default;
 	virtual void Enter(StateMachineComponent* pStateMachine, StateProperty property) = 0;
 	virtual void Leave(StateMachineComponent* pStateMachine) = 0;
 	virtual void Update(StateMachineComponent* pStateMachine) = 0;
@@ -257,8 +226,8 @@ private:
 class EnemyPatternState : public CharacterState
 {
 public:
-	explicit EnemyPatternState(const EnemyAttackPatternSettings& attackPatternSettings)
-		: attackPatternSettings(attackPatternSettings)
+	explicit EnemyPatternState(const EnemyPatternSequenceSettings& sequenceSettings)
+		: sequenceSettings(sequenceSettings)
 	{}
 	void Enter(StateMachineComponent* pStateMachine, StateProperty property) override;
 	void Leave(StateMachineComponent* pStateMachine) override;
@@ -267,7 +236,6 @@ public:
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
 
 private:
-	// 적 패턴과 가중치를 나타내는 구조체. 패턴과 해당 패턴의 가중치를 함께 저장
 	struct PatternWeight
 	{
 		EnemyPattern pattern;
@@ -276,26 +244,21 @@ private:
 
 	EnemyPattern SelectPattern(StateMachineComponent* pStateMachine);
 	EnemyPattern SelectWeightedPattern(const std::vector<PatternWeight>& patterns);
-
 	std::vector<PatternWeight> BuildAttackPatterns(StateMachineComponent* pStateMachine, float distance);
 	std::vector<PatternWeight> BuildWatchingPatterns(float distance);
-
-	void ExecutePattern(StateMachineComponent* pStateMachine, EnemyPattern pattern);
+	void ApplySequenceWeights(std::vector<PatternWeight>& patterns) const;
 	void UpdatePatternHistory(EnemyPattern pattern);
 	void DisablePreviousAttack(std::vector<PatternWeight>& patterns) const;
-	void DisableUncheckedAttacks(std::vector<PatternWeight>& patterns) const;
-
+	void ExecutePattern(StateMachineComponent* pStateMachine, EnemyPattern pattern);
 	bool CanUseEnemyAttack(StateMachineComponent* pStateMachine);
 	bool IsAttackPattern(EnemyPattern pattern) const;
 	bool IsWatchingPattern(EnemyPattern pattern) const;
 
-private:
+	const EnemyPatternSequenceSettings& sequenceSettings;
+	EnemyPatternSequenceCursor sequenceCursor;
 	EnemyPattern previousPattern = EnemyPattern::None;
-
-	// 공격패턴의 연속 사용 횟수를 추적하는 변수. 공격 패턴이 일정 횟수 이상 반복되지 않기 위한 장치
 	int consecutiveAttackCount = 0;
-	const unsigned int MAX_CONSECUTIVE_ATTACK_COUNT = 3;
-	const EnemyAttackPatternSettings& attackPatternSettings;
+	static constexpr int MAX_CONSECUTIVE_ATTACK_COUNT = 3;
 };
 
 class EnemyAttackState : public PlayerAttackState

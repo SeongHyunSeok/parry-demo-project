@@ -178,15 +178,18 @@ void GS(point VertexOut gin[1],
 float4 PS(GeoOut pin) : SV_Target
 {
     MaterialData matData = gMaterialData[pin.MaterialIndex];
+    uint diffuseMapIndex = NonUniformResourceIndex(matData.DiffuseMapIndex);
     
-    float4 diffuseAlbedo = gParticleMapArray[matData.DiffuseMapIndex].Sample(gsamAnisotropicWrap, pin.TexC) * matData.DiffuseAlbedo;
+    float4 diffuseAlbedo = gParticleMapArray[diffuseMapIndex].Sample(gsamAnisotropicClamp, pin.TexC)
+        * matData.DiffuseAlbedo
+        * pin.Color;
     
 #ifdef ALPHA_TEST
 	// Discard pixel if texture alpha < 0.1.  We do this test as soon 
 	// as possible in the shader so that we can potentially exit the
 	// shader early, thereby skipping the rest of the shader code.
     
-	clip((diffuseAlbedo.r + diffuseAlbedo.g + diffuseAlbedo.b) - 1.0f);
+	clip(diffuseAlbedo.a - 0.01f);
 #endif
     
     return diffuseAlbedo;

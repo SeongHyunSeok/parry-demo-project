@@ -373,6 +373,27 @@ void AnimationController::SetAnimation(AnimationType type, float speed)
 	SetTrackSpeed(type, speed);
 }
 
+void AnimationController::RestartAnimation(AnimationType type, float speed)
+{
+	if (animationPlayInfos[curAnimationPlayIndex].animationType != type)
+	{
+		SetAnimation(type, speed);
+		return;
+	}
+
+	// A new action may use the same clip as the completed action.
+	// Reset root-motion history as well, so restarting cannot cause a position jump.
+	AnimationPlayInfo& playInfo = animationPlayInfos[curAnimationPlayIndex];
+	playInfo.timePosition = animationTracks.at(type).startPosition;
+	playInfo.startingAnimation = true;
+	playInfo.prevRootBoneRawTranslation = { 0.0f, 0.0f, 0.0f };
+	playInfo.curRootBoneRawTranslation = { 0.0f, 0.0f, 0.0f };
+	rootBoneTranslationResult = { 0.0f, 0.0f, 0.0f };
+	blending = false;
+	blendingWeight = 0.0f;
+	SetTrackSpeed(type, speed);
+}
+
 void AnimationController::SetTrackSpeed(AnimationType type, float speed)
 {
 	animationTracks[type].SetSpeed(speed);

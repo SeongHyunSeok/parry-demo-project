@@ -11,7 +11,8 @@
 
 enum class ParticlePsoType : UINT
 {
-	BILLBOARD = 0,
+	BILLBOARD_ALPHA = 0,
+	BILLBOARD_ADDITIVE,
 	COUNT
 };
 
@@ -33,8 +34,11 @@ class ParticleManager
 	ID3D12Device* d3dDevice;
 
 	MeshGeometry billboardParticleVertices;
-	UINT billboardParticleCount;
+	UINT billboardParticleCount = 0;
+	UINT alphaBillboardParticleCount = 0;
+	UINT additiveBillboardParticleCount = 0;
 	std::vector<ShaderParticle> shaderParticles;
+	std::vector<ShaderParticle> additiveShaderParticles;
 
 	std::random_device randomDevice;
 	std::mt19937 randomEngine;
@@ -54,6 +58,7 @@ public:
 	);
 
 	void Update(float dt, FrameResource* curFrameResource, const XMFLOAT3& cameraUp, const XMFLOAT3& cameraLook);
+	void Clear();
 	void Render(ID3D12GraphicsCommandList* commandList, D3D12_GPU_VIRTUAL_ADDRESS passCBaddr);
 
 	void CreateParticle(

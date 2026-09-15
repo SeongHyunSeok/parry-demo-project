@@ -1,6 +1,7 @@
 #define WORLD_MAIN
 
 #include "GameFramework.h"
+#include "AudioManager.h"
 #include "world.h"
 #include "inputs.h"
 #include <WindowsX.h>
@@ -12,6 +13,13 @@
 using Microsoft::WRL::ComPtr;
 using namespace std;
 using namespace DirectX;
+
+namespace
+{
+	const XMFLOAT3 PlayerSpawnPosition{ 0.0f, 10.0f, -5.0f };
+	const XMFLOAT3 EnemySpawnPosition{ 0.0f, 10.0f, 5.0f };
+	const XMFLOAT3 CharacterSpawnRotation{ 0.0f, MathHelper::Pi, 0.0f };
+}
 
 static Camera& GetMainCamera() {
 	auto& cameras = WORLD.GetComponents<Camera>();
@@ -41,6 +49,7 @@ GameFramework::GameFramework(HINSTANCE hInstance) : mhAppInst(hInstance)
 
 GameFramework::~GameFramework()
 {
+	AudioManager::GetInstance().Shutdown();
 	if (md3dDevice != nullptr)
 		FlushCommandQueue();
 
@@ -228,6 +237,10 @@ bool GameFramework::Initialize()
 	GLOBAL_TIMER.RecordElapsed(initTimePoint, GLOBAL_TIMER.Now());
 
 	while (ShowCursor(FALSE) >= 0);
+
+	// Audio failures are reported in the settings window; gameplay can continue.
+	AudioManager::GetInstance().Initialize();
+	AudioManager::GetInstance().PlayBgm();
 
 	return true;
 }
@@ -995,6 +1008,13 @@ void GameFramework::Update(float dt)
 		comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword] = hEquipobj.value();
 	}
 
+	// Reset after applying the selected equipment and before combat/physics updates.
+	if (mRestartRequested)
+	{
+		RestartGame();
+		mRestartRequested = false;
+	}
+
 	//
 	// Animate the lights (and hence shadows).
 	//
@@ -1011,6 +1031,10 @@ void GameFramework::Update(float dt)
 
 
 	// Debug--------------
+	// Capture swing cues before a successful parry can change the attack state.
+	for (auto& stateMachine : WORLD.GetComponents<StateMachineComponent>())
+		stateMachine.UpdateCombatAudio();
+
 	//auto& player = WORLD.GetComponents<PlayerComponent>().front();
 	auto pComPlayerStateMachine = WORLD.GetComponent<StateMachineComponent>(player.GetOwner());
 	auto pComPlayerMesh = WORLD.GetComponent<MeshComponent>(player.GetOwner());
@@ -1123,6 +1147,7 @@ void GameFramework::Update(float dt)
 			GameEvent ge;
 			ge.eventType = GameEventType::Parried;
 			comEnemyStateMachine.HandleGameEvent(ge);
+			AudioManager::GetInstance().PlaySfx(SoundId::SwordClash);
 			auto parryPos = Vector3::Add(pComEnemyMesh->Translation, pComPlayerMesh->Translation);
 			parryPos = Vector3::ScalarProduct(parryPos, 0.5f, false);
 			parryPos.y = pComPlayerMesh->Translation.y + 3.5f;
@@ -1390,7 +1415,7 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 		}
 		inputManager.LockMouse(!inputManager.IsMouseLocked());
 	}
-	if (actionLock) return;
+	if (actionLock || ImGui::GetIO().WantCaptureKeyboard || ImGui::GetIO().WantCaptureMouse) return;
 
 	if (inputManager.IsJustPressed(VK_MBUTTON)) {
 		mTargetLocked = !mTargetLocked;
@@ -1478,6 +1503,8 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 }
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {
+	if (ImGui::GetIO().WantCaptureMouse)
+		return;
 	const auto& inputManager = InputManager::GetInstance();
 	if (inputManager.IsMouseLocked() && !directionlock && !mTargetLocked) {
 		auto mouseMoveVec = inputManager.GetMouseMotionVec();
@@ -1885,23 +1912,18 @@ void GameFramework::UpdateImGui()
 	ImGui::Checkbox("Show Player Valid Parry Frame", &showPlayerValidParryFrame);
 	ImGui::Checkbox("Show Player Valid Roll Hit", &showPlayerValidRollHit);
 	ImGui::Checkbox("Enemy Active", &bEnemyActive);
+	ImGui::Checkbox("Show Pattern Editor", &showPatternEditor);
 
-	ImGui::SeparatorText("Enemy Attack Patterns (One Hand)");
-	static const char* attackPatternLabels[7] =
-	{
-		"Attack 1",
-		"Attack 2",
-		"Attack 3",
-		"Attack 1 Offbeat",
-		"Attack 2 Offbeat",
-		"Attack 3 Offbeat",
-		"Combo"
-	};
-	for (unsigned int i = 0; i < EnemyAttackPatternSettings::PATTERN_COUNT; ++i)
-	{
-		ImGui::Checkbox(attackPatternLabels[i], &enemyAttackPatternSettings.enabled[i]);
-	}
-	ImGui::TextDisabled("These options affect one-hand enemies only.");
+	ImGui::SeparatorText("Audio");
+	auto& audio = AudioManager::GetInstance();
+	float sfxVolume = audio.GetSfxVolume();
+	float bgmVolume = audio.GetBgmVolume();
+	if (ImGui::SliderFloat("SFX Volume", &sfxVolume, 0.0f, 1.0f))
+		audio.SetSfxVolume(sfxVolume);
+	if (ImGui::SliderFloat("Music Volume", &bgmVolume, 0.0f, 1.0f))
+		audio.SetBgmVolume(bgmVolume);
+	if (!audio.GetLastError().empty())
+		ImGui::TextWrapped("Audio: %s", audio.GetLastError().c_str());
 
 	ImGui::SeparatorText("Attack Type(Preparing)");
 	static int e = 0;
@@ -1914,15 +1936,200 @@ void GameFramework::UpdateImGui()
 		bOneHandMode = false;
 
 	ImGui::SeparatorText("Game World Simulation");
-	static int clicked = 0;
-	if (ImGui::Button("Start"))
-		clicked++;
-	if (clicked & 1)
+	if (ImGui::Button("Restart"))
+		mRestartRequested = true;
+
+	ImGui::End();
+	DrawPatternEditor();
+}
+
+void GameFramework::DrawPatternEditor()
+{
+	if (!showPatternEditor)
+		return;
+	ImGui::SetNextWindowSize(ImVec2(760, 660), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSizeConstraints(ImVec2(660, 540), ImVec2(FLT_MAX, FLT_MAX));
+	if (!ImGui::Begin("Pattern Editor", &showPatternEditor))
 	{
-		ImGui::SameLine();
-		ImGui::Text("Preparing...");
+		ImGui::End();
+		return;
 	}
 
+	auto& draft = patternSequenceDraft;
+	auto& applied = enemyPatternSettings;
+	ImGui::TextWrapped("Drag patterns into the sequence. Drag rows to reorder; drop in Remove to delete.");
+	ImGui::TextDisabled("Caps Lock: release/capture the mouse. Changes take effect after Apply.");
+	ImGui::Checkbox("Lock editing", &patternEditorLocked);
+	ImGui::SameLine();
+	ImGui::BeginDisabled(patternEditorLocked);
+	ImGui::Checkbox("Fixed order", &draft.useFixedOrder);
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!draft.useFixedOrder);
+	ImGui::Checkbox("Repeat", &draft.repeat);
+	ImGui::EndDisabled();
+	ImGui::EndDisabled();
+
+	// Queue edits while drawing: mutating a vector inside the row loop invalidates rows.
+	EnemyPattern pendingAdd = EnemyPattern::None;
+	int pendingMove = -1;
+	int pendingRemove = -1;
+	std::size_t destination = draft.entries.size();
+	auto acceptDrop = [&](std::size_t gap)
+	{
+		if (patternEditorLocked || !ImGui::BeginDragDropTarget())
+			return;
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENEMY_PATTERN_ADD"))
+		{
+			if (payload->DataSize == sizeof(EnemyPattern))
+			{
+				pendingAdd = *static_cast<const EnemyPattern*>(payload->Data);
+				destination = gap;
+			}
+		}
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENEMY_PATTERN_MOVE"))
+		{
+			if (payload->DataSize == sizeof(int))
+			{
+				pendingMove = *static_cast<const int*>(payload->Data);
+				destination = gap;
+			}
+		}
+		ImGui::EndDragDropTarget();
+	};
+
+	const float listHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 230.0f);
+	if (ImGui::BeginTable("PatternColumns", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
+	{
+		ImGui::TableSetupColumn("Available patterns", ImGuiTableColumnFlags_WidthStretch, 0.4f);
+		ImGui::TableSetupColumn("Sequence", ImGuiTableColumnFlags_WidthStretch, 0.6f);
+		ImGui::TableHeadersRow();
+		ImGui::TableNextRow();
+		ImGui::TableSetColumnIndex(0);
+		ImGui::BeginChild("PatternLibrary", ImVec2(0, listHeight), ImGuiChildFlags_Borders);
+		ImGui::BeginDisabled(patternEditorLocked);
+		for (unsigned int value = static_cast<unsigned int>(EnemyPattern::EnemyAttack1);
+			value <= static_cast<unsigned int>(EnemyPattern::Wait); ++value)
+		{
+			const auto pattern = static_cast<EnemyPattern>(value);
+			ImGui::PushID(static_cast<int>(value));
+			if (ImGui::Selectable(GetEnemyPatternLabel(pattern), false, ImGuiSelectableFlags_None, ImVec2(0, 26)))
+				pendingAdd = pattern;
+			if (!patternEditorLocked && ImGui::BeginDragDropSource())
+			{
+				ImGui::SetDragDropPayload("ENEMY_PATTERN_ADD", &pattern, sizeof(pattern));
+				ImGui::Text("Add %s", GetEnemyPatternLabel(pattern));
+				ImGui::EndDragDropSource();
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndDisabled();
+		ImGui::TextDisabled("Click also adds to the end.");
+		ImGui::EndChild();
+
+		ImGui::TableSetColumnIndex(1);
+		ImGui::BeginChild("PatternSequence", ImVec2(0, listHeight), ImGuiChildFlags_Borders);
+		ImGui::BeginDisabled(patternEditorLocked);
+		for (std::size_t i = 0; i < draft.entries.size(); ++i)
+		{
+			const auto& entry = draft.entries[i];
+			ImGui::PushID(entry.id);
+			char label[100];
+			snprintf(label, sizeof(label), "%zu. %s###PatternRow", i + 1, GetEnemyPatternLabel(entry.pattern));
+			const float width = (std::max)(60.0f, ImGui::GetContentRegionAvail().x - 36.0f);
+			ImGui::Button(label, ImVec2(width, 30));
+			const auto rowMin = ImGui::GetItemRectMin();
+			const auto rowMax = ImGui::GetItemRectMax();
+			const std::size_t gap = ImGui::GetMousePos().y < (rowMin.y + rowMax.y) * 0.5f ? i : i + 1;
+			if (!patternEditorLocked && ImGui::BeginDragDropSource())
+			{
+				ImGui::SetDragDropPayload("ENEMY_PATTERN_MOVE", &entry.id, sizeof(entry.id));
+				ImGui::Text("Move %s", GetEnemyPatternLabel(entry.pattern));
+				ImGui::EndDragDropSource();
+			}
+			acceptDrop(gap);
+			if (!patternEditorLocked && ImGui::GetDragDropPayload() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+			{
+				const float y = gap == i ? rowMin.y : rowMax.y;
+				ImGui::GetWindowDrawList()->AddLine(ImVec2(rowMin.x, y), ImVec2(rowMax.x, y),
+					ImGui::GetColorU32(ImGuiCol_DragDropTarget), 3.0f);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("X", ImVec2(28, 30)))
+				pendingRemove = entry.id;
+			ImGui::PopID();
+		}
+		ImGui::Button(draft.entries.empty() ? "Drop first pattern here" : "Drop here to append", ImVec2(-1, 44));
+		acceptDrop(draft.entries.size());
+		ImGui::EndDisabled();
+		ImGui::EndChild();
+		ImGui::EndTable();
+	}
+
+	ImGui::BeginDisabled(patternEditorLocked);
+	ImGui::Button("Remove: drop a sequence row here", ImVec2(-1, 34));
+	if (!patternEditorLocked && ImGui::BeginDragDropTarget())
+	{
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ENEMY_PATTERN_MOVE"))
+		{
+			if (payload->DataSize == sizeof(int))
+				pendingRemove = *static_cast<const int*>(payload->Data);
+		}
+		ImGui::EndDragDropTarget();
+	}
+	if (pendingAdd != EnemyPattern::None)
+		draft.entries.insert(draft.entries.begin() + destination, { nextPatternEntryId++, pendingAdd });
+	else if (pendingMove != -1)
+		MoveEnemyPatternEntry(draft.entries, pendingMove, destination);
+	else if (pendingRemove != -1)
+		std::erase_if(draft.entries, [pendingRemove](const EnemyPatternEntry& entry) { return entry.id == pendingRemove; });
+
+	bool oneHandEnemy = false;
+	auto& stateMachines = WORLD.GetComponents<StateMachineComponent>();
+	if (stateMachines.size() > 1)
+	{
+		const auto equipment = WORLD.GetComponent<EquipmentOwnerComponent>(stateMachines[1].GetOwner());
+		oneHandEnemy = equipment
+			&& equipment->equipments[(UINT)EquipmentType::OneHandSword].has_value()
+			&& !equipment->equipments[(UINT)EquipmentType::TwoHandSword].has_value();
+	}
+	const bool incompatible = !oneHandEnemy
+		&& std::any_of(draft.entries.begin(), draft.entries.end(),
+			[](const EnemyPatternEntry& entry) { return IsOneHandOnlyPattern(entry.pattern); });
+	ImGui::BeginDisabled(incompatible);
+	if (ImGui::Button("Apply"))
+	{
+		const auto revision = applied.revision + 1;
+		applied = draft;
+		applied.revision = revision;
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	if (ImGui::Button("Revert draft"))
+		draft = applied;
+	ImGui::SameLine();
+	if (ImGui::Button("Clear draft"))
+		draft.entries.clear();
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!applied.useFixedOrder || applied.entries.empty());
+	if (ImGui::Button("Restart applied"))
+		++applied.revision;
+	ImGui::EndDisabled();
+
+	const bool dirty = draft.entries != applied.entries || draft.useFixedOrder != applied.useFixedOrder || draft.repeat != applied.repeat;
+	ImGui::Text("Active: %s | %zu steps | %s%s", applied.useFixedOrder ? "Fixed order" : "Random",
+		applied.entries.size(), !applied.useFixedOrder ? "Continuous" : (applied.repeat ? "Repeat" : "Play once"),
+		dirty ? " | Unapplied changes" : "");
+	if (incompatible)
+		ImGui::TextWrapped("Cannot apply: Attack 1-3 and Offbeat require a one-hand enemy weapon. Use Combo or movement patterns.");
+	else if (draft.entries.empty())
+		ImGui::TextDisabled("An empty applied list keeps the enemy waiting in both modes.");
+	else
+		ImGui::TextDisabled("Apply takes effect after the current action. Fixed order starts at step 1.");
+	ImGui::TextDisabled("Random: original distance/behavior AI; the applied list filters candidates.");
+	ImGui::TextDisabled("Duplicate rows multiply that pattern's original AI weight. Repeat is fixed-order only.");
+	ImGui::TextDisabled("Enable Enemy Active to run the applied list.");
+	ImGui::TextDisabled("Sequence settings last for this session. Lock editing prevents accidental changes.");
 	ImGui::End();
 }
 
@@ -3168,8 +3375,8 @@ void GameFramework::BuildRenderItems()
 	pPlayerObj->AddChild(WORLD, GetMainCamera().GetOwner());
 	WORLD.AttachComponent(hPlayerObj, PlayerComponent(hPlayerObj));
 
-	XMFLOAT3 playerOffset = XMFLOAT3(0.0f, 0.f, -5.0f);
-	XMFLOAT3 playerRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
+	XMFLOAT3 playerOffset = PlayerSpawnPosition;
+	XMFLOAT3 playerRot = CharacterSpawnRotation;
 	BuildHumanoidItem<CharacterBody>(
 		hPlayerObj,
 		skinnedCBIndexCounter,
@@ -3184,21 +3391,12 @@ void GameFramework::BuildRenderItems()
 		false
 	);
 
-	std::unordered_map<StateType, std::unique_ptr<CharacterState>> playerStates;
-	playerStates[StateType::Idle] = std::make_unique<PlayerIdleState>();
-	playerStates[StateType::Walk] = std::make_unique<PlayerWalkState>();
-	playerStates[StateType::Roll] = std::make_unique<PlayerRollState>();
-	playerStates[StateType::Attack] = std::make_unique<PlayerAttackState>();
-	playerStates[StateType::Parry] = std::make_unique<PlayerParryState>();
-	playerStates[StateType::Hit] = std::make_unique<PlayerHitState>();
-	playerStates[StateType::Parried] = std::make_unique<PlayerParriedState>();
-	StateMachineComponent comPlayerSM{ hPlayerObj, move(playerStates), StateType::Idle };
-	WORLD.AttachComponent(hPlayerObj, std::move(comPlayerSM));
+	InitializeCharacterStateMachine(hPlayerObj, true);
 
 	// Build Enemy
 	auto hEnemyObj = WORLD.AddObject();
-	XMFLOAT3 ememyOffset = XMFLOAT3(0.0f, 0.f, 5.0f);
-	XMFLOAT3 ememyRot = XMFLOAT3(0.0f, MathHelper::Pi, 0.0f);
+	XMFLOAT3 ememyOffset = EnemySpawnPosition;
+	XMFLOAT3 ememyRot = CharacterSpawnRotation;
 	BuildHumanoidItem(
 		hEnemyObj,
 		skinnedCBIndexCounter,
@@ -3212,17 +3410,90 @@ void GameFramework::BuildRenderItems()
 		false,
 		false
 	);
-	std::unordered_map<StateType, std::unique_ptr<CharacterState>> enemyStates;
-	enemyStates[StateType::Idle] = std::make_unique<EnemyIdleState>();
-	enemyStates[StateType::Attack] = std::make_unique<EnemyAttackState>(enemyAttackAnimationSpeed);
-	enemyStates[StateType::Hit] = std::make_unique<EnemyHitState>();
-	enemyStates[StateType::Parried] = std::make_unique<EnemyParriedState>();
-	enemyStates[StateType::Walk] = std::make_unique<EnemyWalkState>();
-	enemyStates[StateType::Pattern] = std::make_unique<EnemyPatternState>(enemyAttackPatternSettings);
-	StateMachineComponent comEnemySM{ hEnemyObj, move(enemyStates), StateType::Idle };
-	WORLD.AttachComponent(hEnemyObj, std::move(comEnemySM));
+	InitializeCharacterStateMachine(hEnemyObj, false);
 
 
+}
+
+void GameFramework::InitializeCharacterStateMachine(Handle<GameObject> owner, bool isPlayer)
+{
+	std::unordered_map<StateType, std::unique_ptr<CharacterState>> states;
+	if (isPlayer)
+	{
+		states[StateType::Idle] = std::make_unique<PlayerIdleState>();
+		states[StateType::Walk] = std::make_unique<PlayerWalkState>();
+		states[StateType::Roll] = std::make_unique<PlayerRollState>();
+		states[StateType::Attack] = std::make_unique<PlayerAttackState>();
+		states[StateType::Parry] = std::make_unique<PlayerParryState>();
+		states[StateType::Hit] = std::make_unique<PlayerHitState>();
+		states[StateType::Parried] = std::make_unique<PlayerParriedState>();
+	}
+	else
+	{
+		states[StateType::Idle] = std::make_unique<EnemyIdleState>();
+		states[StateType::Attack] = std::make_unique<EnemyAttackState>(enemyAttackAnimationSpeed);
+		states[StateType::Hit] = std::make_unique<EnemyHitState>();
+		states[StateType::Parried] = std::make_unique<EnemyParriedState>();
+		states[StateType::Walk] = std::make_unique<EnemyWalkState>();
+		states[StateType::Pattern] = std::make_unique<EnemyPatternState>(enemyPatternSettings);
+	}
+	if (auto stateMachine = WORLD.GetComponent<StateMachineComponent>(owner))
+		stateMachine->Reset(move(states), StateType::Idle);
+	else
+		WORLD.AttachComponent(owner, StateMachineComponent{ owner, move(states), StateType::Idle });
+}
+
+void GameFramework::RestartGame()
+{
+	using namespace physics;
+	for (auto& stateMachine : WORLD.GetComponents<StateMachineComponent>())
+	{
+		const auto owner = stateMachine.GetOwner();
+		const bool isPlayer = WORLD.GetComponent<PlayerComponent>(owner) != nullptr;
+		const auto& spawn = isPlayer ? PlayerSpawnPosition : EnemySpawnPosition;
+		const RVec3 position{ spawn.x, spawn.y, spawn.z };
+		if (auto body = WORLD.GetComponent<CharacterBody>(owner))
+		{
+			body->targetVelocity = Vec3::sZero();
+			body->desiredVelocity = Vec3::sZero();
+			body->allowSliding = false;
+			body->inJump = false;
+			body->GetController().SetPosition(position);
+			body->GetController().SetRotation(Quat::sIdentity());
+			body->GetController().SetLinearVelocity(Vec3::sZero());
+		}
+		if (auto body = WORLD.GetComponent<SimpleCharacterBody>(owner))
+		{
+			body->targetVelocity = Vec3::sZero();
+			body->GetController().SetPositionAndRotation(position, Quat::sIdentity());
+			body->GetController().SetLinearAndAngularVelocity(Vec3::sZero(), Vec3::sZero());
+			body->GetController().PostSimulation(0.05f);
+		}
+		auto mesh = WORLD.GetComponent<MeshComponent>(owner);
+		mesh->Translation = spawn;
+		mesh->Rotation = CharacterSpawnRotation;
+		mesh->NumFramesDirty = gNumFrameResources;
+		if (isPlayer)
+			for (auto& drawItem : mesh->drawItems)
+				drawItem.Mat = mMaterials[mSkinnedMats[0].Name].get();
+
+		// Discard old blends/root motion and recreate states to reset combo and pattern cursors.
+		auto animation = WORLD.GetComponent<AnimationComponent>(owner);
+		animation->mSkinnedModelAnimationController =
+			std::make_unique<AnimationController>(mSkinnedAnimationSets[HumanoidAssets::AssetName].get());
+		InitializeCharacterStateMachine(owner, isPlayer);
+	}
+
+	mPlayerHitTime = 0.0f;
+	directionlock = false;
+	directionlockTime = 0.0f;
+	mTargetLocked = false;
+	mParticleManager.Clear();
+	AudioManager::GetInstance().StopSfx();
+	InputManager::GetInstance().Reset();
+	WORLD.GetComponent<AttachedCamera>(GetMainCamera().GetOwner())->offset = Vec3{ 0.f, 2.f, -13.f };
+	physics::UpdateAttachedCamera();
+	GetMainCamera().UpdateViewMatrix();
 }
 
 void GameFramework::BuildEquipmentItem(

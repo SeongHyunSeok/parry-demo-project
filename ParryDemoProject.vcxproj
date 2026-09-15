@@ -151,6 +151,7 @@
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Core\AudioManager.cpp" />
     <ClCompile Include="Core\Camera.cpp" />
     <ClCompile Include="Core\Components\StateMachine.cpp" />
     <ClCompile Include="Core\d3dUtil.cpp" />
@@ -181,8 +182,10 @@
     <ClCompile Include="Model\ModelLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Assets\AnimationAudio.h" />
     <ClInclude Include="Assets\Humanoid.h" />
     <ClInclude Include="Assets\Particles.h" />
+    <ClInclude Include="Core\AudioManager.h" />
     <ClInclude Include="Core\Camera.h" />
     <ClInclude Include="Core\component.h" />
     <ClInclude Include="Core\Components\Animation.h" />
@@ -194,6 +197,7 @@
     <ClInclude Include="Core\d3dUtil.h" />
     <ClInclude Include="Core\d3dx12.h" />
     <ClInclude Include="Core\DDSTextureLoader.h" />
+    <ClInclude Include="Core\EnemyPatternSequence.h" />
     <ClInclude Include="Core\event.h" />
     <ClInclude Include="Core\FileUtility.h" />
     <ClInclude Include="Core\FrameResource.h" />

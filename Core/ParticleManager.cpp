@@ -5,6 +5,16 @@
 #include <iterator>
 
 
+void ParticleManager::Clear()
+{
+	particleEmitters.clear();
+	shaderParticles.clear();
+	additiveShaderParticles.clear();
+	billboardParticleCount = 0;
+	alphaBillboardParticleCount = 0;
+	additiveBillboardParticleCount = 0;
+}
+
 void ParticleManager::Initialize(
 	ID3D12Device* device,
 	ID3D12GraphicsCommandList* commandList,
@@ -33,6 +43,7 @@ void ParticleManager::Initialize(
 	BuildParticleMaterialGpuBuffer(commandList);
 
 	shaderParticles.reserve(MAX_BILLBOARD_PARTICLES);
+	additiveShaderParticles.reserve(MAX_BILLBOARD_PARTICLES);
 
 	randomEngine = std::mt19937(randomDevice());
 }
@@ -125,7 +136,7 @@ void ParticleManager::BuildPSOs(
 	shaders["ParticleBillboardGS"] = d3dUtil::CompileShader(L"Core\\Shaders\\ParticleBillboard.hlsl", nullptr, "GS", "gs_5_1");
 	shaders["ParticleBillboardPS"] = d3dUtil::CompileShader(L"Core\\Shaders\\ParticleBillboard.hlsl", alphaTestDefines, "PS", "ps_5_1");
 
-	particleInputLayouts[(UINT)ParticlePsoType::BILLBOARD] = 
+	particleInputLayouts[(UINT)ParticlePsoType::BILLBOARD_ALPHA] =
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "SIZE", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -137,7 +148,7 @@ void ParticleManager::BuildPSOs(
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC billboardPsoDesc;
 	ZeroMemory(&billboardPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-	billboardPsoDesc.InputLayout = { particleInputLayouts[(UINT)ParticlePsoType::BILLBOARD].data(), (UINT)particleInputLayouts[(UINT)ParticlePsoType::BILLBOARD] .size()};
+	billboardPsoDesc.InputLayout = { particleInputLayouts[(UINT)ParticlePsoType::BILLBOARD_ALPHA].data(), (UINT)particleInputLayouts[(UINT)ParticlePsoType::BILLBOARD_ALPHA].size()};
 	billboardPsoDesc.pRootSignature = particleRootSig.Get();
 	billboardPsoDesc.VS =
 	{
@@ -174,6 +185,7 @@ void ParticleManager::BuildPSOs(
 	billboardPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
 
 	billboardPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	billboardPsoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 	billboardPsoDesc.SampleMask = UINT_MAX;
 
 	billboardPsoDesc.NumRenderTargets = 1;
@@ -182,7 +194,13 @@ void ParticleManager::BuildPSOs(
 	billboardPsoDesc.SampleDesc.Quality = msaa4xState ? (msaa4xQuality - 1) : 0;
 	billboardPsoDesc.DSVFormat = depthStencilFormat;
 
-	ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&billboardPsoDesc, IID_PPV_ARGS(&particlePSOs[(UINT)ParticlePsoType::BILLBOARD])));
+	ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&billboardPsoDesc, IID_PPV_ARGS(&particlePSOs[(UINT)ParticlePsoType::BILLBOARD_ALPHA])));
+
+	transparencyBlendDesc.SrcBlend = D3D12_BLEND_ONE;
+	transparencyBlendDesc.DestBlend = D3D12_BLEND_ONE;
+	transparencyBlendDesc.DestBlendAlpha = D3D12_BLEND_ONE;
+	billboardPsoDesc.BlendState.RenderTarget[0] = transparencyBlendDesc;
+	ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&billboardPsoDesc, IID_PPV_ARGS(&particlePSOs[(UINT)ParticlePsoType::BILLBOARD_ADDITIVE])));
 }
 
 void ParticleManager::BuildBillboardMeshGeometry(ID3D12GraphicsCommandList* commandList)
@@ -229,11 +247,12 @@ void ParticleManager::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv, CD
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-	for (const auto& texture : textures) {
-		const D3D12_RESOURCE_DESC& resourceDesc = texture.second->Resource->GetDesc();
+	for (const auto& textureAsset : ParticleAssets::PartileTexureFiles) {
+		const auto& texture = textures.at(textureAsset.first);
+		const D3D12_RESOURCE_DESC& resourceDesc = texture->Resource->GetDesc();
 		srvDesc.Format = resourceDesc.Format;
 		srvDesc.Texture2D.MipLevels = resourceDesc.MipLevels;
-		d3dDevice->CreateShaderResourceView(texture.second->Resource.Get(), &srvDesc, hDescriptor);
+		d3dDevice->CreateShaderResourceView(texture->Resource.Get(), &srvDesc, hDescriptor);
 		// next descriptor
 		hDescriptor.Offset(1, cbvSrvUavDescriptorSize);
 	}
@@ -241,8 +260,11 @@ void ParticleManager::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv, CD
 
 void ParticleManager::Update(float dt, FrameResource* curFrameResource, const XMFLOAT3& cameraUp, const XMFLOAT3& cameraLook)
 {
-	billboardParticleCount = 0;
+ 	billboardParticleCount = 0;
+	alphaBillboardParticleCount = 0;
+	additiveBillboardParticleCount = 0;
 	shaderParticles.clear();
+	additiveShaderParticles.clear();
 
 	for (auto it = particleEmitters.begin(); it != particleEmitters.end();) {
 		it->Update(dt, cameraUp, cameraLook, randomEngine);
@@ -251,10 +273,12 @@ void ParticleManager::Update(float dt, FrameResource* curFrameResource, const XM
 		}
 		else {
 			if (it->particleProperties->renderer.mode == ParticleRenderMode::BILLBOARD) {
+			auto& renderParticles = it->particleProperties->renderer.additive
+					? additiveShaderParticles
+					: shaderParticles;
 				for (const auto& particle : it->particles) {
-					if (billboardParticleCount < MAX_BILLBOARD_PARTICLES) {
-						shaderParticles.emplace_back(ShaderParticle{ particle.position, particle.size, particle.up, particle.look, particle.color, particle.materialIndex });
-						// 	curFrameResource->BillbarodParticleVB->CopyData(billboardParticleCount++, sp);
+					if (shaderParticles.size() + additiveShaderParticles.size() < MAX_BILLBOARD_PARTICLES) {
+						renderParticles.emplace_back(ShaderParticle{ particle.position, particle.size, particle.up, particle.look, particle.color, particle.materialIndex });
 					}
 				}
 			}
@@ -263,8 +287,14 @@ void ParticleManager::Update(float dt, FrameResource* curFrameResource, const XM
 		}
 	}
 
-	memcpy(curFrameResource->BillbarodParticleVB->mMappedData, shaderParticles.data(), sizeof(ShaderParticle) * (shaderParticles.size()));
-	billboardParticleCount += (shaderParticles.size());
+	alphaBillboardParticleCount = (UINT)shaderParticles.size();
+	additiveBillboardParticleCount = (UINT)additiveShaderParticles.size();
+	shaderParticles.insert(shaderParticles.end(), additiveShaderParticles.begin(), additiveShaderParticles.end());
+	billboardParticleCount = (UINT)shaderParticles.size();
+
+	if (!shaderParticles.empty()) {
+		memcpy(curFrameResource->BillbarodParticleVB->mMappedData, shaderParticles.data(), sizeof(ShaderParticle) * shaderParticles.size());
+	}
 
 	billboardParticleVertices.VertexBufferGPU = curFrameResource->BillbarodParticleVB->Resource();
 	const UINT vbByteSize = billboardParticleCount * sizeof(ShaderParticle);
@@ -303,12 +333,19 @@ void ParticleManager::RenderBillBoardParticles(
 	commandList->SetGraphicsRootDescriptorTable(1, hGpuSrvStart);
 	commandList->SetGraphicsRootConstantBufferView(2, passCBaddr);
 
-	commandList->SetPipelineState(particlePSOs[(UINT)ParticlePsoType::BILLBOARD].Get());
-
 	auto vbv = billboardParticleVertices.VertexBufferView();
 	auto ibv = billboardParticleVertices.IndexBufferView();
 	commandList->IASetVertexBuffers(0, 1, &vbv);
 	commandList->IASetIndexBuffer(&ibv);
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
-	commandList->DrawIndexedInstanced(billboardParticleCount, 1, 0, 0, 0);
+
+	if (alphaBillboardParticleCount > 0) {
+		commandList->SetPipelineState(particlePSOs[(UINT)ParticlePsoType::BILLBOARD_ALPHA].Get());
+		commandList->DrawIndexedInstanced(alphaBillboardParticleCount, 1, 0, 0, 0);
+	}
+
+	if (additiveBillboardParticleCount > 0) {
+		commandList->SetPipelineState(particlePSOs[(UINT)ParticlePsoType::BILLBOARD_ADDITIVE].Get());
+		commandList->DrawIndexedInstanced(additiveBillboardParticleCount, 1, alphaBillboardParticleCount, 0, 0);
+	}
 }

@@ -116,6 +116,9 @@ private:
 	void UpdateShadowPassCB(float dt);
 	void UpdateSsaoCB(float dt);
 	void UpdateImGui();
+	void RestartGame();
+	void InitializeCharacterStateMachine(Handle<GameObject> owner, bool isPlayer);
+	void DrawPatternEditor();
 
 	void LoadTextures();
 	void BuildRootSignature();
@@ -313,8 +316,8 @@ protected:
 	D3D_DRIVER_TYPE md3dDriverType = D3D_DRIVER_TYPE_HARDWARE;
 	DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	DXGI_FORMAT mDepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	int mClientWidth = 800;
-	int mClientHeight = 600;
+	int mClientWidth = 1440;
+	int mClientHeight = 1080;
 
 private:
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
@@ -393,11 +396,16 @@ private:
 
 	// temp
 	bool showStartMenu = true;
+	bool mRestartRequested = false;
 	float mPlayerHitTime = 0.0f;
 	float rollJudgementFrameOffset = 0.0f;
 	bool showPlayerValidRollHit = true;
 	bool bEnemyActive = false;
-	EnemyAttackPatternSettings enemyAttackPatternSettings;
+	EnemyPatternSequenceSettings enemyPatternSettings;
+	EnemyPatternSequenceSettings patternSequenceDraft;
+	int nextPatternEntryId = 1;
+	bool showPatternEditor = true;
+	bool patternEditorLocked = false;
 
 
 	bool actionLock = false;

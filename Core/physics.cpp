@@ -455,7 +455,9 @@ namespace physics {
 
 	void MyCharacterContactListener::OnContactCommon(const CharacterVirtual* inCharacter, const BodyID& inBodyID2, const SubShapeID& inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings& ioSettings)
 	{
-		ioSettings.mCanPushCharacter = false;
+		// Keep the body's contact velocity and penetration recovery in the solver.
+		// Disabling this can trap the virtual player against the enemy's dynamic body.
+		ioSettings.mCanPushCharacter = true;
 		ioSettings.mCanReceiveImpulses = false;
 	}
 

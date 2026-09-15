@@ -352,6 +352,7 @@ public:
 public:
 	void SetAnimation(AnimationType type);
 	void SetAnimation(AnimationType type, float speed);
+	void RestartAnimation(AnimationType type, float speed);
 
 	void SetTrackSpeed(AnimationType type, float speed);
 	void SetTrackPeriod(AnimationType type, float startTime, float endTime);

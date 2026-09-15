@@ -70,6 +70,13 @@ struct ParticeRenderer
 	bool localAlignment;
 	DirectX::XMFLOAT3 localRotation;
 	UINT materialIndex;
+
+	// 불꽃 겹칠 시 밝기 더하기
+	bool additive = false;
+	// 이동방향에 맞게 정렬
+	bool alignToVelocity = false;
+	// 점점 투명하게
+	bool fadeOut = false;
 };
 
 struct ParticleEmissionShape
