@@ -1355,6 +1355,8 @@ void GameFramework::Draw(float dt)
 
 	// Render Dear ImGui graphics
 	ImGui::Render();
+	ID3D12DescriptorHeap* imguiDescriptorHeaps[] = { mImGuiSrvHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(imguiDescriptorHeaps), imguiDescriptorHeaps);
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 
 	// Indicate a state transition on the resource usage.
