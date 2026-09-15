@@ -945,6 +945,7 @@ void GameFramework::Update(float dt)
 
 	HandleKeyboardInput(camera, dt);
 	HandleMouseInput(camera, dt);
+	UpdateTargetLock();
 
 	UpdateImGui();
 
@@ -1028,27 +1029,35 @@ void GameFramework::Update(float dt)
 		comEnemyStateMachine.HandleGameEvent(ge);
 	}
 
-	if (showEnemyValidAttackFrame && comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack) {
-		auto pComEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(comEnemyStateMachine.GetOwner());
+	auto pComEnemyEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(comEnemyStateMachine.GetOwner());
+	if (pComEnemyEquipmentOwner && pComEnemyEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) {
+		auto pComEnemySwordMesh = WORLD.GetComponent<MeshComponent>(*pComEnemyEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]);
 		Material* curMat = mMaterials["equipment2"].get();
-		if (comEnemyStateMachine.IsInValidFrame()) {
+		if (showEnemyValidAttackFrame
+			&& comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack
+			&& comEnemyStateMachine.IsInValidFrame()) {
 			curMat = mMaterials["equipment3"].get();
 		}
-		if (pComEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]) {
-			auto pComEnemySwordMesh = WORLD.GetComponent<MeshComponent>(*pComEquipmentOwner->equipments[(UINT)EquipmentType::OneHandSword]);
-			pComEnemySwordMesh->drawItems.front().Mat = curMat;
+		if (pComEnemySwordMesh) {
+			for (auto& drawItem : pComEnemySwordMesh->drawItems) {
+				drawItem.Mat = curMat;
+			}
 		}
 	}
 
-	if (showPlayerValidParryFrame && pComPlayerStateMachine->GetCurrentSatateType() == StateType::Parry) {
-		auto pComEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(pComPlayerStateMachine->GetOwner());
+	auto pComPlayerEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(pComPlayerStateMachine->GetOwner());
+	if (pComPlayerEquipmentOwner && pComPlayerEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
+		auto pComShieldMesh = WORLD.GetComponent<MeshComponent>(*pComPlayerEquipmentOwner->equipments[(UINT)EquipmentType::Shield]);
 		Material* curMat = mMaterials["equipment"].get();
-		if (pComPlayerStateMachine->IsInValidFrame(parryJudgementFrameOffset)) {
+		if (showPlayerValidParryFrame
+			&& pComPlayerStateMachine->GetCurrentSatateType() == StateType::Parry
+			&& pComPlayerStateMachine->IsInValidFrame(parryJudgementFrameOffset)) {
 			curMat = mMaterials["equipment4"].get();
 		}
-		if (pComEquipmentOwner->equipments[(UINT)EquipmentType::Shield]) {
-			auto pComShieldMesh = WORLD.GetComponent<MeshComponent>(*pComEquipmentOwner->equipments[(UINT)EquipmentType::Shield]);
-			pComShieldMesh->drawItems.front().Mat = curMat;
+		if (pComShieldMesh) {
+			for (auto& drawItem : pComShieldMesh->drawItems) {
+				drawItem.Mat = curMat;
+			}
 		}
 	}
 
@@ -1114,6 +1123,19 @@ void GameFramework::Update(float dt)
 			GameEvent ge;
 			ge.eventType = GameEventType::Parried;
 			comEnemyStateMachine.HandleGameEvent(ge);
+			auto parryPos = Vector3::Add(pComEnemyMesh->Translation, pComPlayerMesh->Translation);
+			parryPos = Vector3::ScalarProduct(parryPos, 0.5f, false);
+			parryPos.y = pComPlayerMesh->Translation.y + 3.5f;
+			mParticleManager.CreateParticle(
+				"effect_parry_flash",
+				parryPos,
+				XMFLOAT3(1.0f, 1.0f, 1.0f),
+				XMFLOAT3(0.0f, 0.0f, 0.0f));
+			mParticleManager.CreateParticle(
+				"effect_parry_sparks",
+				parryPos,
+				XMFLOAT3(1.0f, 1.0f, 1.0f),
+				XMFLOAT3(0.0f, 0.0f, 0.0f));
 		}
 	}
 	else if (!playerNoHit && distance < 3.0f && comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack && comEnemyStateMachine.IsInValidFrame()) {
@@ -1370,6 +1392,10 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	}
 	if (actionLock) return;
 
+	if (inputManager.IsJustPressed(VK_MBUTTON)) {
+		mTargetLocked = !mTargetLocked;
+	}
+
 
 	// '[' key pressed
 	if (inputManager.IsJustReleased(VK_OEM_4))
@@ -1412,18 +1438,18 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	auto pComPlayerMesh = WORLD.GetComponent<MeshComponent>(player.GetOwner());
 
 	if (inputManager.IsJustPressed(VK_LBUTTON) && !directionlock) {
-		mParticleManager.CreateParticle(
-			"snow_slash_slash",
-			(Vector3::Add( pComPlayerMesh->Translation, XMFLOAT3(0.0f, 0.2f, 0.0f))),
-			XMFLOAT3(1.0f, 1.0f, 1.0f),
-			XMFLOAT3(0.0f, 0.0f, 0.0f)
-		);
-		mParticleManager.CreateParticle(
-			"snow_slash_snowflake",
-			(Vector3::Add(pComPlayerMesh->Translation, XMFLOAT3(0.0f, 0.2f, 0.0f))),
-			XMFLOAT3(1.0f, 1.0f, 1.0f),
-			XMFLOAT3(0.0f, 0.0f, 0.0f)
-		);
+		//mParticleManager.CreateParticle(
+		//	"snow_slash_slash",
+		//	(Vector3::Add( pComPlayerMesh->Translation, XMFLOAT3(0.0f, 0.2f, 0.0f))),
+		//	XMFLOAT3(1.0f, 1.0f, 1.0f),
+		//	XMFLOAT3(0.0f, 0.0f, 0.0f)
+		//);
+		//mParticleManager.CreateParticle(
+		//	"snow_slash_snowflake",
+		//	(Vector3::Add(pComPlayerMesh->Translation, XMFLOAT3(0.0f, 0.2f, 0.0f))),
+		//	XMFLOAT3(1.0f, 1.0f, 1.0f),
+		//	XMFLOAT3(0.0f, 0.0f, 0.0f)
+		//);
 		playerInput.type = InputType::Attack;
 	}
 	
@@ -1438,10 +1464,10 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	player.Input(playerInput);
 
 	auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(player.GetOwner());
-	if (inputManager.IsPressed('Q')) {
+	if (!mTargetLocked && inputManager.IsPressed('Q')) {
 		pPlayerMesh->Rotation.y -= XMConvertToRadians(0.75);
 	}
-	if (inputManager.IsPressed('E')) {
+	if (!mTargetLocked && inputManager.IsPressed('E')) {
 		pPlayerMesh->Rotation.y += XMConvertToRadians(0.75);
 	}
 	pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
@@ -1453,7 +1479,7 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {
 	const auto& inputManager = InputManager::GetInstance();
-	if (inputManager.IsMouseLocked()&&!directionlock) {
+	if (inputManager.IsMouseLocked() && !directionlock && !mTargetLocked) {
 		auto mouseMoveVec = inputManager.GetMouseMotionVec();
 		if (inputManager.IsPressed(VK_LBUTTON))
 		{
@@ -1469,6 +1495,52 @@ void GameFramework::HandleMouseInput(Camera& camera, float dt) {
 		pPlayerMesh->Rotation.y += XMConvertToRadians(0.25f * static_cast<float>(mouseMoveVec.x));
 		pPlayerMesh->Rotation.y -= ((int)(pPlayerMesh->Rotation.y / (2 * MathHelper::Pi))) * (2 * MathHelper::Pi);
 	}
+}
+
+void GameFramework::UpdateTargetLock()
+{
+	if (!mTargetLocked) {
+		return;
+	}
+
+	auto& players = WORLD.GetComponents<PlayerComponent>();
+	if (players.empty()) {
+		mTargetLocked = false;
+		return;
+	}
+
+	const auto playerOwner = players.front().GetOwner();
+	auto pPlayerMesh = WORLD.GetComponent<MeshComponent>(playerOwner);
+	if (!pPlayerMesh) {
+		mTargetLocked = false;
+		return;
+	}
+
+	MeshComponent* pTargetMesh = nullptr;
+	for (auto& stateMachine : WORLD.GetComponents<StateMachineComponent>()) {
+		if (stateMachine.GetOwner() == playerOwner) {
+			continue;
+		}
+
+		pTargetMesh = WORLD.GetComponent<MeshComponent>(stateMachine.GetOwner());
+		if (pTargetMesh) {
+			break;
+		}
+	}
+
+	if (!pTargetMesh) {
+		mTargetLocked = false;
+		return;
+	}
+
+	const float deltaX = pTargetMesh->Translation.x - pPlayerMesh->Translation.x;
+	const float deltaZ = pTargetMesh->Translation.z - pPlayerMesh->Translation.z;
+	if (deltaX * deltaX + deltaZ * deltaZ <= FLT_EPSILON) {
+		return;
+	}
+
+	pPlayerMesh->Rotation.y = atan2f(deltaX, deltaZ);
+	pPlayerMesh->NumFramesDirty = gNumFrameResources;
 }
 
 void GameFramework::AnimateMaterials(float dt)
@@ -1805,7 +1877,7 @@ void GameFramework::UpdateImGui()
 
 	ImGui::Begin("Parry Simulation Setting"); // Create a window called "Hello, world!" and append into it.
 
-	ImGui::SliderFloat("Enemy Animation Speed", &enemyAttackAnimationSpeed, 0.1f, 3.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+	ImGui::SliderFloat("Enemy Attack Animation Speed", &enemyAttackAnimationSpeed, 0.1f, 3.0f);
 	ImGui::SliderFloat("Parry Judgement Frame Offset", &parryJudgementFrameOffset, -0.1f, 0.2f);
 	ImGui::SliderFloat("Roll Judgement Frame Offset", &rollJudgementFrameOffset, -0.2f, 1.4f);
 	ImGui::Checkbox("Player No Hit", &playerNoHit);
@@ -1852,18 +1924,6 @@ void GameFramework::UpdateImGui()
 	}
 
 	ImGui::End();
-
-	auto& comEnemyStateMachine = (WORLD.GetComponents<StateMachineComponent>())[1];
-	auto pComEnemyAni = WORLD.GetComponent<AnimationComponent>(comEnemyStateMachine.GetOwner());
-	{
-		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_1, enemyAttackAnimationSpeed);
-		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_2, enemyAttackAnimationSpeed);
-		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_3, enemyAttackAnimationSpeed);
-		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_4, enemyAttackAnimationSpeed);
-		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_5, enemyAttackAnimationSpeed);
-		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_6, enemyAttackAnimationSpeed);
-		pComEnemyAni->mSkinnedModelAnimationController->SetTrackSpeed(AnimationType::OneHandBaseAttackTypeC_7, enemyAttackAnimationSpeed);
-	}
 }
 
 void GameFramework::LoadTextures()
@@ -2970,9 +3030,9 @@ void GameFramework::BuildMaterials()
 	equipment3->MatCBIndex = matCBIndex++;
 	equipment3->DiffuseSrvHeapIndex = 4;
 	equipment3->NormalSrvHeapIndex = -1;
-	equipment3->DiffuseAlbedo = XMFLOAT4(1.0f, 0.85f, 0.85f, 1.0f);
-	equipment3->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
-	equipment3->Roughness = 0.5f;
+	equipment3->DiffuseAlbedo = XMFLOAT4(4.0f, 0.02f, 0.02f, 1.0f);
+	equipment3->FresnelR0 = XMFLOAT3(1.0f, 0.0f, 0.0f);
+	equipment3->Roughness = 0.15f;
 	mMaterials["equipment3"] = std::move(equipment3);
 
 
@@ -2981,9 +3041,9 @@ void GameFramework::BuildMaterials()
 	equipment4->MatCBIndex = matCBIndex++;
 	equipment4->DiffuseSrvHeapIndex = 4;
 	equipment4->NormalSrvHeapIndex = -1;
-	equipment4->DiffuseAlbedo = XMFLOAT4(0.85f, 0.85f, 1.00f, 1.0f);
-	equipment4->FresnelR0 = XMFLOAT3(0.98f, 0.97f, 0.95f);
-	equipment4->Roughness = 0.5f;
+	equipment4->DiffuseAlbedo = XMFLOAT4(0.02f, 3.0f, 4.0f, 1.0f);
+	equipment4->FresnelR0 = XMFLOAT3(0.0f, 0.7f, 1.0f);
+	equipment4->Roughness = 0.15f;
 	mMaterials["equipment4"] = std::move(equipment4);
 
 	auto hit = std::make_unique<Material>();
@@ -3154,7 +3214,7 @@ void GameFramework::BuildRenderItems()
 	);
 	std::unordered_map<StateType, std::unique_ptr<CharacterState>> enemyStates;
 	enemyStates[StateType::Idle] = std::make_unique<EnemyIdleState>();
-	enemyStates[StateType::Attack] = std::make_unique<EnemyAttackState>();
+	enemyStates[StateType::Attack] = std::make_unique<EnemyAttackState>(enemyAttackAnimationSpeed);
 	enemyStates[StateType::Hit] = std::make_unique<EnemyHitState>();
 	enemyStates[StateType::Parried] = std::make_unique<EnemyParriedState>();
 	enemyStates[StateType::Walk] = std::make_unique<EnemyWalkState>();

@@ -301,7 +301,9 @@ private:
 class EnemyAttackState : public PlayerAttackState
 {
 public:
-	EnemyAttackState() {}
+	explicit EnemyAttackState(const float& attackAnimationSpeed)
+		: attackAnimationSpeed(attackAnimationSpeed)
+	{}
 	void Enter(StateMachineComponent* pStateMachine, StateProperty property) override;
 	void Update(StateMachineComponent* pStateMachine) override;
 	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
@@ -314,6 +316,7 @@ private:
 
 private:
 	EnemyPattern currentPattern = EnemyPattern::None;
+	const float& attackAnimationSpeed;
 
 	bool bActive = true;
 };

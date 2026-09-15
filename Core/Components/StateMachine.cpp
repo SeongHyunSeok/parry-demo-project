@@ -838,7 +838,7 @@ void EnemyAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty
 		if (maxComboCount > 0)
 		{
 			// 기존 PlayerAttackState의 TwoHand B_1 또는 OneHand C_1 선택
-			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
+			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
 		}
 		return;
 	}
@@ -852,14 +852,14 @@ void EnemyAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty
 			maxComboCount = twoHand? MAX_TwoHand_COMBO_COUNT: MAX_OneHand_COMBO_COUNT;
 			currentComboCount = 0;
 
-			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
+			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
 
 			return;
 		}
 
 		maxComboCount = 0;
 
-		pStateMachine->SetOwnerAnimation(GetEnemyAttackAnimation(currentPattern));
+		pStateMachine->SetOwnerAnimation(GetEnemyAttackAnimation(currentPattern), attackAnimationSpeed);
 
 		return;
 	}
@@ -867,6 +867,15 @@ void EnemyAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty
 
 void EnemyAttackState::Update(StateMachineComponent* pStateMachine)
 {
+	if (currentPattern == EnemyPattern::Combo)
+	{
+		pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
+	}
+	else if (IsEnemyAttackPattern(currentPattern))
+	{
+		pStateMachine->SetOwnerAnimation(GetEnemyAttackAnimation(currentPattern), attackAnimationSpeed);
+	}
+
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
 	pStateMachine->CheckDistAndSetToFaceOpponent(player.GetOwner(),ATTACK_DISTANCE);
 
@@ -888,7 +897,7 @@ void EnemyAttackState::Update(StateMachineComponent* pStateMachine)
 		if (maxComboCount > 0 && currentComboCount + 1 < maxComboCount)
 		{
 			++currentComboCount;
-			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine));
+			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
 			return;
 		}
 		pStateMachine->ChangeState(StateType::Pattern, StateProperty());

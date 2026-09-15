@@ -106,6 +106,7 @@ protected:
 private:
 	void HandleKeyboardInput(Camera& camera, float dt);
 	void HandleMouseInput(Camera& camera, float dt);
+	void UpdateTargetLock();
 	void AnimateMaterials(float dt);
 	void UpdateObjectCBs(float dt);
 	void UpdateSkinnedCBs(float dt);
@@ -404,4 +405,5 @@ private:
 
 	bool directionlock = false;
 	float directionlockTime = 0.0f;
+	bool mTargetLocked = false;
 };
