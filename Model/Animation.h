@@ -275,7 +275,7 @@ public:
 	std::unordered_map<AnimationType, AnimationSet*> animationSets;
 	std::vector<int> boneHierarchy;
 	std::vector<DirectX::XMFLOAT4X4> boneOffsets;
-	const std::unordered_map<AnimationType, AnimationEffectiveTimeInfo>* animationEffectiveTimeInfos;
+	const std::unordered_map<AnimationType, AnimationEffectiveTimeInfo>* animationEffectiveTimeInfos = nullptr;
 	std::unordered_map<EquipmentType, EquipmentLocation> equipmentLocations;
 	std::unordered_map<std::string, AnimationSet> rawAnimationSets;
 public:
@@ -353,6 +353,9 @@ public:
 	void SetAnimation(AnimationType type);
 	void SetAnimation(AnimationType type, float speed);
 	void RestartAnimation(AnimationType type, float speed);
+	void ArmEffectiveFrameSlowdown(float addedDelaySeconds, float slowdownLeadSeconds);
+	void CancelEffectiveFrameSlowdown();
+	bool IsEffectiveFrameSlowdownActive() const { return effectiveFrameSlowdownActive; }
 
 	void SetTrackSpeed(AnimationType type, float speed);
 	void SetTrackPeriod(AnimationType type, float startTime, float endTime);
@@ -373,6 +376,13 @@ private:
 	void UpdateTimePosition(float elapsedTime);
 	void UpdateTimePosition(float elapsedTime, UINT playInfoIndex);
 	DirectX::XMFLOAT3 CalcRawTranslationDiff(UINT playInfoIndex);
+
+	bool effectiveFrameSlowdownArmed = false;
+	bool effectiveFrameSlowdownActive = false;
+	AnimationType effectiveFrameSlowdownAnimation = AnimationType::Idle;
+	float effectiveFrameSlowdownStartPosition = 0.0f;
+	float effectiveFrameSlowdownEndPosition = 0.0f;
+	float effectiveFrameSlowdownRateScale = 1.0f;
 };
 
 struct CALLBACKKEY

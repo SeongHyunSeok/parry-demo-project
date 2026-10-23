@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -43,6 +44,60 @@ inline const char* GetEnemyPatternLabel(EnemyPattern pattern)
 	case EnemyPattern::Wait: return "Wait";
 	default: return "None";
 	}
+}
+
+inline constexpr int EnemyAttackDelayMaxFrames = 60;
+inline constexpr int EnemyAttackDelayStepFrames = 3;
+inline constexpr float EnemyAttackSlowdownLeadFrames = 0.5f;
+inline constexpr float EnemyAttackDelayReferenceFps = 60.0f;
+
+inline constexpr std::array<EnemyPattern, 4> EnemyAttackDelayPatterns = {
+	EnemyPattern::EnemyAttack1,
+	EnemyPattern::EnemyAttack2,
+	EnemyPattern::EnemyAttack3,
+	EnemyPattern::Combo
+};
+
+inline constexpr std::array<int, EnemyAttackDelayPatterns.size()>
+	EnemyAttackDelayRecommendedFrames = { 6, 9, 12, 9 };
+
+struct EnemyAttackDelaySettings
+{
+	bool enabled = false;
+	// Recommended starting values at 60 FPS, in noticeable three-frame steps.
+	std::array<int, EnemyAttackDelayPatterns.size()> delayFrames =
+		EnemyAttackDelayRecommendedFrames;
+	bool operator==(const EnemyAttackDelaySettings&) const = default;
+
+	int GetFrames(EnemyPattern pattern) const
+	{
+		const auto it = std::find(EnemyAttackDelayPatterns.begin(), EnemyAttackDelayPatterns.end(), pattern);
+		if (it == EnemyAttackDelayPatterns.end())
+			return 0;
+		const int frames = std::clamp(
+			delayFrames[static_cast<std::size_t>(it - EnemyAttackDelayPatterns.begin())],
+			0, EnemyAttackDelayMaxFrames);
+		return (frames / EnemyAttackDelayStepFrames) * EnemyAttackDelayStepFrames;
+	}
+
+	int& GetFramesForEditing(EnemyPattern pattern)
+	{
+		const auto it = std::find(EnemyAttackDelayPatterns.begin(), EnemyAttackDelayPatterns.end(), pattern);
+		return delayFrames[static_cast<std::size_t>(it - EnemyAttackDelayPatterns.begin())];
+	}
+
+};
+
+inline float EnemyAttackDelayFramesToSeconds(int frames)
+{
+	return static_cast<float>(std::clamp(frames, 0, EnemyAttackDelayMaxFrames))
+		/ EnemyAttackDelayReferenceFps;
+}
+
+inline float GetEnemyAttackSlowdownLeadSeconds()
+{
+	return static_cast<float>(EnemyAttackSlowdownLeadFrames)
+		/ EnemyAttackDelayReferenceFps;
 }
 
 struct EnemyPatternEntry

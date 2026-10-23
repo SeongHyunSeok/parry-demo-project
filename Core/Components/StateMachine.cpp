@@ -60,13 +60,19 @@ void StateMachineComponent::UpdateCombatAudio()
 
 	if (currentStateType == StateType::Attack && !attackSoundPlayed)
 	{
-		const auto timing = AnimationAudio::SwordSlashTimePositions.find(play.animationType);
-		// Testing a crossed threshold also works when a fast animation skips a frame.
-		if (timing != AnimationAudio::SwordSlashTimePositions.end() &&
-			play.timePosition >= timing->second)
+		const auto* timings = controller.animationSets
+			? controller.animationSets->animationEffectiveTimeInfos
+			: nullptr;
+		if (timings)
 		{
-			attackSoundPlayed = true;
-			AudioManager::GetInstance().PlaySfx(SoundId::SwordSlash);
+			const auto timing = timings->find(play.animationType);
+			// Testing a crossed threshold also works when a fast animation skips a frame.
+			if (timing != timings->end() &&
+				play.timePosition >= timing->second.effectiveStartTimePos)
+			{
+				attackSoundPlayed = true;
+				AudioManager::GetInstance().PlaySfx(SoundId::SwordSlash);
+			}
 		}
 	}
 	else if (currentStateType == StateType::Hit && !fatalHitSoundPlayed)
@@ -104,10 +110,13 @@ void StateMachineComponent::ChangeStateByInput(const PlayerInupt& playerInput)
 	case InputType::Walk: 
 		target = StateType::Walk; break;
 	case InputType::Roll:
+		if (!TryConsumeOwnerStamina(CombatAction::Roll)) return;
 		target = StateType::Roll; break;
 	case InputType::Attack:
+		if (!TryConsumeOwnerStamina(CombatAction::Attack)) return;
 		target = StateType::Attack; break;
 	case InputType::Parray:
+		if (!TryConsumeOwnerStamina(CombatAction::Parry)) return;
 		target = StateType::Parry; break;
 	}
 	ChangeState(target, sp);
@@ -143,6 +152,28 @@ void StateMachineComponent::RestartOwnerAnimation(AnimationType animationType, f
 		attackSoundPlayed = false;
 		animation->mSkinnedModelAnimationController->RestartAnimation(animationType, speed);
 	}
+}
+
+void StateMachineComponent::ArmOwnerEffectiveFrameSlowdown(
+	float addedDelaySeconds, float slowdownLeadSeconds)
+{
+	auto animation = WORLD.GetComponent<AnimationComponent>(GetOwner());
+	if (animation && animation->mSkinnedModelAnimationController)
+		animation->mSkinnedModelAnimationController->ArmEffectiveFrameSlowdown(
+			addedDelaySeconds, slowdownLeadSeconds);
+}
+
+void StateMachineComponent::CancelOwnerEffectiveFrameSlowdown()
+{
+	auto animation = WORLD.GetComponent<AnimationComponent>(GetOwner());
+	if (animation && animation->mSkinnedModelAnimationController)
+		animation->mSkinnedModelAnimationController->CancelEffectiveFrameSlowdown();
+}
+
+bool StateMachineComponent::TryConsumeOwnerStamina(CombatAction action)
+{
+	auto stats = WORLD.GetComponent<CombatStatsComponent>(GetOwner());
+	return !stats || stats->TryConsumeStamina(action);
 }
 
 void StateMachineComponent::SetOwnerAnimation(AnimationType animationType)
@@ -513,7 +544,8 @@ void PlayerRollState::HandleInput(StateMachineComponent* pStateMachine, const Pl
 
 void PlayerRollState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
 {
-	// TO DO : Implement to ignore damages in specific period
+	if (event.eventType == GameEventType::Hit)
+		pStateMachine->ChangeState(StateType::Hit, createHitStatePropertyFromGameEvent(event, false));
 }
 
 AnimationType PlayerRollState::GetAnimationType()
@@ -618,7 +650,8 @@ void PlayerAttackState::Update(StateMachineComponent* pStateMachine)
 
 void PlayerAttackState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)
 {
-	if (playerInput.type == InputType::Attack) {
+	if (playerInput.type == InputType::Attack && !doNextCombo
+		&& pStateMachine->TryConsumeOwnerStamina(CombatAction::Attack)) {
 		doNextCombo = true;
 	}
 	if (pStateMachine->CheckAnimationEnd() && !doNextCombo) {
@@ -696,7 +729,13 @@ void PlayerParryState::HandleInput(StateMachineComponent* pStateMachine, const P
 
 void PlayerParryState::HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event)
 {
-	// TO DO : Implement to ignore Hit in specific period
+	if (event.eventType == GameEventType::Hit)
+		pStateMachine->ChangeState(StateType::Hit, createHitStatePropertyFromGameEvent(event, false));
+}
+
+bool StateMachineComponent::IsGuarding() const
+{
+	return currentState && currentState->IsGuarding();
 }
 
 
@@ -900,6 +939,7 @@ void EnemyAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty
 		{
 			// 기존 PlayerAttackState의 TwoHand B_1 또는 OneHand C_1 선택
 			pStateMachine->RestartOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
+			ArmCurrentAttackSlowdown(pStateMachine);
 		}
 		return;
 	}
@@ -914,6 +954,7 @@ void EnemyAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty
 			currentComboCount = 0;
 
 			pStateMachine->RestartOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
+			ArmCurrentAttackSlowdown(pStateMachine);
 
 			return;
 		}
@@ -921,9 +962,16 @@ void EnemyAttackState::Enter(StateMachineComponent* pStateMachine, StateProperty
 		maxComboCount = 0;
 
 		pStateMachine->RestartOwnerAnimation(GetEnemyAttackAnimation(currentPattern), attackAnimationSpeed);
+		ArmCurrentAttackSlowdown(pStateMachine);
 
 		return;
 	}
+}
+
+void EnemyAttackState::Leave(StateMachineComponent* pStateMachine)
+{
+	pStateMachine->CancelOwnerEffectiveFrameSlowdown();
+	PlayerAttackState::Leave(pStateMachine);
 }
 
 void EnemyAttackState::Update(StateMachineComponent* pStateMachine)
@@ -959,6 +1007,7 @@ void EnemyAttackState::Update(StateMachineComponent* pStateMachine)
 		{
 			++currentComboCount;
 			pStateMachine->SetOwnerAnimation(GetAnimationType(pStateMachine), attackAnimationSpeed);
+			ArmCurrentAttackSlowdown(pStateMachine);
 			return;
 		}
 		pStateMachine->ChangeState(StateType::Pattern, StateProperty());
@@ -966,6 +1015,20 @@ void EnemyAttackState::Update(StateMachineComponent* pStateMachine)
 	}
 
 	pStateMachine->ChangeState(StateType::Pattern,StateProperty());
+}
+
+void EnemyAttackState::ArmCurrentAttackSlowdown(StateMachineComponent* pStateMachine) const
+{
+	if (!attackDelaySettings.enabled)
+	{
+		pStateMachine->CancelOwnerEffectiveFrameSlowdown();
+		return;
+	}
+
+	const int delayFrames = attackDelaySettings.GetFrames(currentPattern);
+	pStateMachine->ArmOwnerEffectiveFrameSlowdown(
+		EnemyAttackDelayFramesToSeconds(delayFrames),
+		GetEnemyAttackSlowdownLeadSeconds());
 }
 
 void EnemyAttackState::HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput)

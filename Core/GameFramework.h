@@ -21,6 +21,7 @@
 #include "Components/Sky.h"
 #include "Components/Equipment.h"
 #include "Components/Player.h"
+#include "Components/CombatStats.h"
 #include "../Model/GeometryGenerator.h"
 #include "../Model/Animation.h"
 #include "../Model/ModelLoader.h"
@@ -116,9 +117,21 @@ private:
 	void UpdateShadowPassCB(float dt);
 	void UpdateSsaoCB(float dt);
 	void UpdateImGui();
+	void SetDebugMenusVisible(bool visible);
 	void RestartGame();
 	void InitializeCharacterStateMachine(Handle<GameObject> owner, bool isPlayer);
+	void DrawControlGuide();
 	void DrawPatternEditor();
+	void DrawAttackDelayEditor();
+	void DrawCombatSettingsEditor();
+	void DrawCombatHud();
+	void DrawCombatPauseMenu();
+	void StartCombatMode();
+	void RestartCombatMode();
+	void ExitCombatMode();
+	void SetCombatPaused(bool paused);
+	void ConfigureCombatStats();
+	void UpdateRealCombat(float dt);
 
 	void LoadTextures();
 	void BuildRootSignature();
@@ -186,7 +199,7 @@ private:
 			CharacterBody comPlayerController{
 				handle,
 				*settings,
-				Vec3(modelOffset.x, 10.f, modelOffset.z),
+				Vec3(modelOffset.x, modelOffset.y, modelOffset.z),
 				Quat::sIdentity(),
 				PHYSICS_SYSTEM,
 				std::make_unique<MyCharacterContactListener>()
@@ -201,7 +214,7 @@ private:
 			SimpleCharacterBody comAIController{
 				handle,
 				*settings,
-				Vec3(modelOffset.x, 10.f, modelOffset.z),
+				Vec3(modelOffset.x, modelOffset.y, modelOffset.z),
 				Quat::sIdentity(),
 				PHYSICS_SYSTEM
 			};
@@ -387,8 +400,6 @@ private:
 
 	// imgui
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mImGuiSrvHeap;
-	float enemyAttackAnimationSpeed = 1.0f;
-	float parryJudgementFrameOffset = 0.0f;
 	bool playerNoHit = false;
 	bool showEnemyValidAttackFrame = false;
 	bool showPlayerValidParryFrame = false;
@@ -396,16 +407,34 @@ private:
 
 	// temp
 	bool showStartMenu = true;
+	bool showDebugMenus = true;
 	bool mRestartRequested = false;
 	float mPlayerHitTime = 0.0f;
-	float rollJudgementFrameOffset = 0.0f;
 	bool showPlayerValidRollHit = true;
 	bool bEnemyActive = false;
 	EnemyPatternSequenceSettings enemyPatternSettings;
 	EnemyPatternSequenceSettings patternSequenceDraft;
+	EnemyAttackDelaySettings enemyAttackDelaySettings;
+	EnemyAttackDelaySettings enemyAttackDelayDraft;
+	CombatModeSettings combatModeSettings;
+	CombatModeSettings combatModeDraft;
 	int nextPatternEntryId = 1;
-	bool showPatternEditor = true;
+	bool showPatternEditor = false;
+	bool showAttackDelayEditor = false;
+	bool showCombatSettingsEditor = false;
 	bool patternEditorLocked = false;
+	bool combatMode = false;
+	bool combatPaused = false;
+	bool startCombatRequested = false;
+	bool restartCombatRequested = false;
+	bool exitCombatRequested = false;
+	bool playerAttackHitRegistered = false;
+	bool enemyAttackHitRegistered = false;
+	bool fatalAttackTriggered = false;
+	enum class CombatOutcome { None, Victory, Defeat };
+	CombatOutcome combatOutcome = CombatOutcome::None;
+	float combatOutcomeTime = 0.0f;
+	float combatCountdownRemaining = 0.0f;
 
 
 	bool actionLock = false;

@@ -189,6 +189,7 @@
     <ClInclude Include="Core\Camera.h" />
     <ClInclude Include="Core\component.h" />
     <ClInclude Include="Core\Components\Animation.h" />
+    <ClInclude Include="Core\Components\CombatStats.h" />
     <ClInclude Include="Core\Components\Equipment.h" />
     <ClInclude Include="Core\Components\Mesh.h" />
     <ClInclude Include="Core\Components\Player.h" />

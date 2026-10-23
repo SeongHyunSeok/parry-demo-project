@@ -293,6 +293,9 @@
     <ClInclude Include="Assets\AnimationAudio.h">
       <Filter>Assets</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Components\CombatStats.h">
+      <Filter>Core\Components</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Core\Shaders\Common.hlsl">

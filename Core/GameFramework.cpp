@@ -16,9 +16,46 @@ using namespace DirectX;
 
 namespace
 {
-	const XMFLOAT3 PlayerSpawnPosition{ 0.0f, 10.0f, -5.0f };
-	const XMFLOAT3 EnemySpawnPosition{ 0.0f, 10.0f, 5.0f };
-	const XMFLOAT3 CharacterSpawnRotation{ 0.0f, MathHelper::Pi, 0.0f };
+	const XMFLOAT3 PlayerSpawnPosition{ 0.0f, 0.05f, -8.0f };
+	const XMFLOAT3 EnemySpawnPosition{ 0.0f, 0.05f, 8.0f };
+	const XMFLOAT3 PlayerSpawnRotation{ 0.0f, 0.0f, 0.0f };
+	const XMFLOAT3 EnemySpawnRotation{ 0.0f, MathHelper::Pi, 0.0f };
+	constexpr float CombatCountdownSeconds = 3.0f;
+
+	bool DrawFloatEditorRow(const char* label, float& value, float speed,
+		float minValue, float maxValue, const char* format)
+	{
+		ImGui::PushID(label);
+		ImGui::TableNextRow();
+		ImGui::TableSetColumnIndex(0);
+		ImGui::TextUnformatted(label);
+		ImGui::TableSetColumnIndex(1);
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		bool changed = ImGui::DragFloat("##drag", &value, speed, minValue, maxValue,
+			format, ImGuiSliderFlags_AlwaysClamp);
+		ImGui::TableSetColumnIndex(2);
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		changed |= ImGui::InputFloat("##input", &value, 0.0f, 0.0f, format,
+			ImGuiInputTextFlags_CharsDecimal);
+		value = std::clamp(value, minValue, maxValue);
+		ImGui::PopID();
+		return changed;
+	}
+
+	void DrawCenteredBoldText(ImDrawList* draw, const ImVec2& displaySize,
+		const char* text, float fontSize, ImU32 color, float centerY)
+	{
+		ImFont* font = ImGui::GetFont();
+		const ImVec2 textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text);
+		const ImVec2 origin((displaySize.x - textSize.x) * 0.5f, centerY - textSize.y * 0.5f);
+		const ImVec2 offsets[] = {
+			ImVec2(-1.5f, 0.0f), ImVec2(1.5f, 0.0f),
+			ImVec2(0.0f, -1.5f), ImVec2(0.0f, 1.5f)
+		};
+		for (const auto& offset : offsets)
+			draw->AddText(font, fontSize, ImVec2(origin.x + offset.x, origin.y + offset.y),
+				color, text);
+	}
 }
 
 static Camera& GetMainCamera() {
@@ -248,7 +285,9 @@ bool GameFramework::Initialize()
 LRESULT CALLBACK
 MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+	const bool combatShortcut = (msg == WM_KEYDOWN || msg == WM_KEYUP)
+		&& (wParam == VK_ESCAPE || wParam == VK_END || wParam == 'T');
+	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam) && !combatShortcut)
 		return true;
 
 	// Forward hwnd on because we can get messages (e.g., WM_CREATE)
@@ -493,7 +532,7 @@ LRESULT GameFramework::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		}
 		return 0;
 	case WM_KEYUP:
-		if (wParam == VK_ESCAPE)
+		if (wParam == VK_END)
 		{
 			PostQuitMessage(0);
 		}
@@ -961,6 +1000,48 @@ void GameFramework::Update(float dt)
 	UpdateTargetLock();
 
 	UpdateImGui();
+	if (startCombatRequested)
+	{
+		startCombatRequested = false;
+		StartCombatMode();
+	}
+	if (restartCombatRequested)
+	{
+		restartCombatRequested = false;
+		RestartCombatMode();
+	}
+	if (exitCombatRequested)
+	{
+		exitCombatRequested = false;
+		ExitCombatMode();
+	}
+
+	if (combatMode && combatOutcome != CombatOutcome::None)
+	{
+		combatOutcomeTime += dt;
+		if (combatOutcomeTime >= 1.25f)
+		{
+			if (combatOutcome == CombatOutcome::Victory)
+				ExitCombatMode();
+			else
+				RestartCombatMode();
+		}
+		return;
+	}
+	if (combatPaused)
+		return;
+	if (combatMode && combatCountdownRemaining > 0.0f)
+	{
+		combatCountdownRemaining = (std::max)(0.0f, combatCountdownRemaining - dt);
+		if (combatCountdownRemaining <= 0.0f)
+		{
+			bEnemyActive = true;
+			actionLock = false;
+		}
+	}
+
+	for (auto& stats : WORLD.GetComponents<CombatStatsComponent>())
+		stats.Update(dt);
 
 	auto& player = WORLD.GetComponents<PlayerComponent>().front();
 	auto hOwner = player.GetOwner();
@@ -1075,7 +1156,7 @@ void GameFramework::Update(float dt)
 		Material* curMat = mMaterials["equipment"].get();
 		if (showPlayerValidParryFrame
 			&& pComPlayerStateMachine->GetCurrentSatateType() == StateType::Parry
-			&& pComPlayerStateMachine->IsInValidFrame(parryJudgementFrameOffset)) {
+			&& pComPlayerStateMachine->IsInValidFrame(combatModeSettings.parryJudgementFrameOffset)) {
 			curMat = mMaterials["equipment4"].get();
 		}
 		if (pComShieldMesh) {
@@ -1089,7 +1170,11 @@ void GameFramework::Update(float dt)
 	float distance = 0.0f;
 	XMStoreFloat(&distance, XMVector3Length(distVec));
 
-	if (distance < 3.0f &&
+	if (combatMode && combatCountdownRemaining <= 0.0f)
+	{
+		UpdateRealCombat(dt);
+	}
+	else if (distance < 3.0f &&
 		pComPlayerStateMachine->GetCurrentSatateType() == StateType::Attack)
 	{
 		if (pComPlayerStateMachine->IsInValidFrame() && comEnemyStateMachine.GetCurrentSatateType() == StateType::Idle) {
@@ -1140,7 +1225,7 @@ void GameFramework::Update(float dt)
 	}
 	else if (distance < 3.0f &&
 		pComPlayerStateMachine->GetCurrentSatateType() == StateType::Parry
-		&& pComPlayerStateMachine->IsInValidFrame(parryJudgementFrameOffset))
+		&& pComPlayerStateMachine->IsInValidFrame(combatModeSettings.parryJudgementFrameOffset))
 	{
 		if (comEnemyStateMachine.GetCurrentSatateType() == StateType::Attack
 			&& comEnemyStateMachine.IsInValidFrame()) {
@@ -1174,7 +1259,7 @@ void GameFramework::Update(float dt)
 			pComPlayerStateMachine->HandleGameEvent(ge);
 		}
 		else if (pComPlayerStateMachine->GetCurrentSatateType() == StateType::Roll
-			&& !pComPlayerStateMachine->IsInValidFrame(rollJudgementFrameOffset) && showPlayerValidRollHit) {
+			&& !pComPlayerStateMachine->IsInValidFrame(combatModeSettings.rollJudgementFrameOffset) && showPlayerValidRollHit) {
 			mPlayerHitTime = dt;
 			Material* curMat = mMaterials["hit"].get();
 			pComPlayerMesh->drawItems.front().Mat = curMat;
@@ -1355,6 +1440,10 @@ void GameFramework::Draw(float dt)
 
 	// Render Dear ImGui graphics
 	ImGui::Render();
+	// The DX12 backend stores the font atlas and any ImGui textures in its own
+	// shader-visible descriptor heap. SetDescriptorHeaps() is command-list state,
+	// so the game heap bound above must be replaced immediately before ImGui
+	// records its draw commands.
 	ID3D12DescriptorHeap* imguiDescriptorHeaps[] = { mImGuiSrvHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(imguiDescriptorHeaps), imguiDescriptorHeaps);
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
@@ -1400,23 +1489,31 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	auto& inputManager = InputManager::GetInstance();
 
 	if (showStartMenu) {
-		if (inputManager.IsPressed(VK_SPACE)) {
+		if (inputManager.IsJustPressed(VK_SPACE)) {
 			showStartMenu = false;
+			SetDebugMenusVisible(true);
 		}
 		return;
 	}
 
-	if (inputManager.IsJustPressed(VK_CAPITAL)) {
-		if (inputManager.IsMouseLocked()) {
-			actionLock = true;
-			while (ShowCursor(TRUE) < 0);
-		}
-		else {
-			actionLock = false;
-			while (ShowCursor(FALSE) >= 0);
-		}
-		inputManager.LockMouse(!inputManager.IsMouseLocked());
+	if (combatMode)
+	{
+		if (inputManager.IsJustPressed(VK_ESCAPE) && combatOutcome == CombatOutcome::None)
+			SetCombatPaused(!combatPaused);
+		if (inputManager.IsJustPressed('T'))
+			restartCombatRequested = true;
+		if (combatPaused || combatOutcome != CombatOutcome::None)
+			return;
 	}
+	else
+	{
+		// Top-row number keys: numpad keys have different virtual-key codes.
+		if (inputManager.IsJustPressed('1'))
+			SetDebugMenusVisible(!showDebugMenus);
+		if (inputManager.IsJustPressed('2'))
+			bEnemyActive = !bEnemyActive;
+	}
+
 	if (actionLock || ImGui::GetIO().WantCaptureKeyboard || ImGui::GetIO().WantCaptureMouse) return;
 
 	if (inputManager.IsJustPressed(VK_MBUTTON)) {
@@ -1483,7 +1580,7 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	auto hOwner = player.GetOwner();
 	const auto comEquipmentOwner = WORLD.GetComponent<EquipmentOwnerComponent>(hOwner);
 
-	if (playerInput.shield && inputManager.IsJustPressed(VK_RBUTTON) && 
+	if (inputManager.IsJustPressed(VK_RBUTTON) &&
 		!comEquipmentOwner->equipments[(UINT)EquipmentType::TwoHandSword]) {
 		playerInput.type = InputType::Parray;
 	}
@@ -1502,6 +1599,32 @@ void GameFramework::HandleKeyboardInput(Camera& camera, float dt)
 	//auto playerController = WORLD.GetComponent<physics::CharacterBody>(player.GetOwner());
 	//assert(playerController);
 	//playerController->inJump = inputManager.IsJustPressed(VK_SPACE);
+}
+
+void GameFramework::SetDebugMenusVisible(bool visible)
+{
+	showDebugMenus = visible;
+	actionLock = visible;
+	if (visible)
+	{
+		showPatternEditor = false;
+		showAttackDelayEditor = false;
+		showCombatSettingsEditor = false;
+	}
+
+	auto& inputManager = InputManager::GetInstance();
+	inputManager.LockMouse(!visible);
+	if (visible)
+	{
+		while (ShowCursor(TRUE) < 0);
+	}
+	else
+	{
+		while (ShowCursor(FALSE) >= 0);
+		POINT center{ mClientWidth / 2, mClientHeight / 2 };
+		ClientToScreen(mhMainWnd, &center);
+		SetCursorPos(center.x, center.y);
+	}
 }
 
 void GameFramework::HandleMouseInput(Camera& camera, float dt) {
@@ -1901,29 +2024,70 @@ void GameFramework::UpdateImGui()
 
 	if (showStartMenu)
 		return;
+	if (combatMode)
+	{
+		DrawCombatHud();
+		if (combatPaused)
+			DrawCombatPauseMenu();
+		return;
+	}
+	if (!showDebugMenus)
+		return;
 
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	const float margin = 8.0f;
+	const float controlGuideHeight = 300.0f;
+	const float settingsWidth = std::clamp(io.DisplaySize.x * 0.26f, 320.0f, 400.0f);
+	const float settingsHeight = (std::max)(300.0f,
+		(std::min)(520.0f, io.DisplaySize.y - controlGuideHeight - margin * 3.0f));
+	ImGui::SetNextWindowPos(ImVec2(margin, margin), ImGuiCond_Once);
+	ImGui::SetNextWindowSize(ImVec2(settingsWidth, settingsHeight), ImGuiCond_Once);
 
 	ImGui::Begin("Parry Simulation Setting"); // Create a window called "Hello, world!" and append into it.
 
-	ImGui::SliderFloat("Enemy Attack Animation Speed", &enemyAttackAnimationSpeed, 0.1f, 3.0f);
-	ImGui::SliderFloat("Parry Judgement Frame Offset", &parryJudgementFrameOffset, -0.1f, 0.2f);
-	ImGui::SliderFloat("Roll Judgement Frame Offset", &rollJudgementFrameOffset, -0.2f, 1.4f);
+	auto& audio = AudioManager::GetInstance();
 	ImGui::Checkbox("Player No Hit", &playerNoHit);
 	ImGui::Checkbox("Show Enemy Valid Attack Frame", &showEnemyValidAttackFrame);
 	ImGui::Checkbox("Show Player Valid Parry Frame", &showPlayerValidParryFrame);
 	ImGui::Checkbox("Show Player Valid Roll Hit", &showPlayerValidRollHit);
 	ImGui::Checkbox("Enemy Active", &bEnemyActive);
-	ImGui::Checkbox("Show Pattern Editor", &showPatternEditor);
+
+	ImGui::SeparatorText("Editors");
+	ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.43f, 0.72f, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.55f, 0.88f, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.10f, 0.34f, 0.62f, 1.0f));
+	if (ImGui::Button("Open Pattern Editor", ImVec2(-1.0f, 38.0f)))
+		showPatternEditor = true;
+	ImGui::PopStyleColor(3);
+	ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.43f, 0.72f, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.55f, 0.88f, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.10f, 0.34f, 0.62f, 1.0f));
+	if (ImGui::Button("Open Combat Settings", ImVec2(-1.0f, 38.0f)))
+		showCombatSettingsEditor = true;
+	if (ImGui::Button("Start Combat Mode", ImVec2(-1.0f, 42.0f)))
+		startCombatRequested = true;
+	ImGui::PopStyleColor(3);
 
 	ImGui::SeparatorText("Audio");
-	auto& audio = AudioManager::GetInstance();
 	float sfxVolume = audio.GetSfxVolume();
 	float bgmVolume = audio.GetBgmVolume();
-	if (ImGui::SliderFloat("SFX Volume", &sfxVolume, 0.0f, 1.0f))
-		audio.SetSfxVolume(sfxVolume);
-	if (ImGui::SliderFloat("Music Volume", &bgmVolume, 0.0f, 1.0f))
-		audio.SetBgmVolume(bgmVolume);
+	if (ImGui::BeginTable("AudioNumericSettings", 3, ImGuiTableFlags_SizingStretchProp))
+	{
+		ImGui::TableSetupColumn("Setting", ImGuiTableColumnFlags_WidthStretch, 1.55f);
+		ImGui::TableSetupColumn("Drag", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.72f);
+		ImGui::TableHeadersRow();
+		if (DrawFloatEditorRow("SFX volume", sfxVolume, 0.01f, 0.0f, 1.0f, "%.2f"))
+			audio.SetSfxVolume(sfxVolume);
+		if (DrawFloatEditorRow("Music volume", bgmVolume, 0.01f, 0.0f, 1.0f, "%.2f"))
+			audio.SetBgmVolume(bgmVolume);
+		ImGui::EndTable();
+	}
+	if (ImGui::Button("Reset audio", ImVec2(-1.0f, 28.0f)))
+	{
+		audio.SetSfxVolume(0.8f);
+		audio.SetBgmVolume(0.25f);
+	}
 	if (!audio.GetLastError().empty())
 		ImGui::TextWrapped("Audio: %s", audio.GetLastError().c_str());
 
@@ -1942,15 +2106,72 @@ void GameFramework::UpdateImGui()
 		mRestartRequested = true;
 
 	ImGui::End();
+	DrawControlGuide();
 	DrawPatternEditor();
+	DrawAttackDelayEditor();
+	DrawCombatSettingsEditor();
+}
+
+void GameFramework::DrawControlGuide()
+{
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	const float margin = 8.0f;
+	const float width = std::clamp(displaySize.x * 0.26f, 320.0f, 400.0f);
+	const float height = 300.0f;
+	ImGui::SetNextWindowPos(ImVec2(margin, (std::max)(margin, displaySize.y - height - margin)),
+		ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Always);
+	ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
+	if (ImGui::BeginTable("ControlGuideRows", 2, ImGuiTableFlags_SizingStretchProp))
+	{
+		ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 105.0f);
+		ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthStretch);
+		const std::pair<const char*, const char*> controls[] = {
+			{ "1", "Show/hide menus and release/capture mouse" },
+			{ "2", "Toggle enemy active" },
+			{ "End", "Quit game" },
+			{ "Esc", "Pause during Combat Mode" },
+			{ "T", "Restart Combat Mode" },
+			{ "W A S D", "Move" },
+			{ "Space", "Roll while moving" },
+			{ "Left mouse", "Attack" },
+			{ "Right mouse", "Parry with one-hand equipment" },
+			{ "Shift", "Hold shield" },
+			{ "Middle mouse", "Target lock" },
+			{ "Q / E", "Rotate without target lock" },
+			{ "[ / ]", "Decrease / increase game speed" }
+		};
+		for (const auto& [key, action] : controls)
+		{
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(key);
+			ImGui::TableSetColumnIndex(1);
+			ImGui::TextUnformatted(action);
+		}
+		ImGui::EndTable();
+	}
+	ImGui::End();
 }
 
 void GameFramework::DrawPatternEditor()
 {
 	if (!showPatternEditor)
 		return;
-	ImGui::SetNextWindowSize(ImVec2(760, 660), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSizeConstraints(ImVec2(660, 540), ImVec2(FLT_MAX, FLT_MAX));
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	const float margin = 8.0f;
+	const float settingsWidth = std::clamp(displaySize.x * 0.26f, 320.0f, 400.0f);
+	const float desiredWidth = std::clamp(displaySize.x * 0.48f, 540.0f, 760.0f);
+	const float availableWidth = (std::max)(420.0f, displaySize.x - settingsWidth - margin * 3.0f);
+	const float editorWidth = (std::min)(desiredWidth, availableWidth);
+	const float delayHeight = (std::min)(440.0f, (std::max)(340.0f, displaySize.y * 0.42f));
+	const float availableHeight = showAttackDelayEditor
+		? displaySize.y - delayHeight - margin * 3.0f
+		: displaySize.y - margin * 2.0f;
+	const float editorHeight = (std::max)(300.0f, (std::min)(660.0f, availableHeight));
+	const float editorX = (std::max)(margin, displaySize.x - editorWidth - margin);
+	ImGui::SetNextWindowPos(ImVec2(editorX, margin), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(editorWidth, editorHeight), ImGuiCond_Always);
 	if (!ImGui::Begin("Pattern Editor", &showPatternEditor))
 	{
 		ImGui::End();
@@ -1959,8 +2180,13 @@ void GameFramework::DrawPatternEditor()
 
 	auto& draft = patternSequenceDraft;
 	auto& applied = enemyPatternSettings;
+	ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.72f, 0.36f, 0.12f, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.90f, 0.47f, 0.16f, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.62f, 0.27f, 0.08f, 1.0f));
+	if (ImGui::Button("Open Attack Delay Settings", ImVec2(-1.0f, 36.0f)))
+		showAttackDelayEditor = true;
+	ImGui::PopStyleColor(3);
 	ImGui::TextWrapped("Drag patterns into the sequence. Drag rows to reorder; drop in Remove to delete.");
-	ImGui::TextDisabled("Caps Lock: release/capture the mouse. Changes take effect after Apply.");
 	ImGui::Checkbox("Lock editing", &patternEditorLocked);
 	ImGui::SameLine();
 	ImGui::BeginDisabled(patternEditorLocked);
@@ -1999,7 +2225,7 @@ void GameFramework::DrawPatternEditor()
 		ImGui::EndDragDropTarget();
 	};
 
-	const float listHeight = (std::max)(180.0f, ImGui::GetContentRegionAvail().y - 230.0f);
+	const float listHeight = (std::max)(120.0f, ImGui::GetContentRegionAvail().y - 190.0f);
 	if (ImGui::BeginTable("PatternColumns", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
 	{
 		ImGui::TableSetupColumn("Available patterns", ImGuiTableColumnFlags_WidthStretch, 0.4f);
@@ -2133,6 +2359,521 @@ void GameFramework::DrawPatternEditor()
 	ImGui::TextDisabled("Enable Enemy Active to run the applied list.");
 	ImGui::TextDisabled("Sequence settings last for this session. Lock editing prevents accidental changes.");
 	ImGui::End();
+}
+
+void GameFramework::DrawAttackDelayEditor()
+{
+	if (!showAttackDelayEditor)
+		return;
+
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	const float margin = 8.0f;
+	const float width = (std::min)(520.0f, (std::max)(440.0f, displaySize.x - margin * 2.0f));
+	const float height = (std::min)(440.0f, (std::max)(340.0f, displaySize.y * 0.42f));
+	const float x = (std::max)(margin, displaySize.x - width - margin);
+	const float y = (std::max)(margin, displaySize.y - height - margin);
+	ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Always);
+	if (!ImGui::Begin("Attack Anticipation Delay", &showAttackDelayEditor))
+	{
+		ImGui::End();
+		return;
+	}
+
+	auto& draft = enemyAttackDelayDraft;
+	ImGui::TextWrapped("All values use a 60 FPS reference and change in 3-frame steps.");
+	ImGui::TextWrapped("The animation slows during the final 0.5 frame before the effective hit time.");
+
+	ImGui::SeparatorText("Delay by attack pattern");
+	if (ImGui::BeginTable("AttackDelayRows", 3, ImGuiTableFlags_SizingStretchProp))
+	{
+		ImGui::TableSetupColumn("Pattern", ImGuiTableColumnFlags_WidthFixed, 145.0f);
+		ImGui::TableSetupColumn("Frames", ImGuiTableColumnFlags_WidthStretch);
+		ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+		ImGui::TableHeadersRow();
+		for (const EnemyPattern pattern : EnemyAttackDelayPatterns)
+		{
+			int& frames = draft.GetFramesForEditing(pattern);
+			const int selectedFrames = draft.GetFrames(pattern);
+			const char* patternName = pattern == EnemyPattern::Combo
+				? "Combo (each hit)"
+				: GetEnemyPatternLabel(pattern);
+			ImGui::PushID(static_cast<int>(pattern));
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(patternName);
+			ImGui::TableSetColumnIndex(1);
+			ImGui::SetNextItemWidth(-1.0f);
+			char preview[16];
+			snprintf(preview, sizeof(preview), "%d frames", selectedFrames);
+			if (ImGui::BeginCombo("##Frames", preview))
+			{
+				for (int optionFrames = 0; optionFrames <= EnemyAttackDelayMaxFrames;
+					optionFrames += EnemyAttackDelayStepFrames)
+				{
+					char optionLabel[16];
+					snprintf(optionLabel, sizeof(optionLabel), "%d frames", optionFrames);
+					const bool selected = optionFrames == selectedFrames;
+					if (ImGui::Selectable(optionLabel, selected))
+						frames = optionFrames;
+					if (selected)
+						ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::TableSetColumnIndex(2);
+			ImGui::Text("%.0f ms", EnemyAttackDelayFramesToSeconds(frames) * 1000.0f);
+			ImGui::PopID();
+		}
+		ImGui::EndTable();
+	}
+
+	if (ImGui::Button("Recommended values"))
+		draft.delayFrames = EnemyAttackDelayRecommendedFrames;
+	ImGui::SameLine();
+	if (ImGui::Button("Clear delays"))
+		draft.delayFrames.fill(0);
+
+	ImGui::Separator();
+	bool dirty = !(draft == enemyAttackDelaySettings);
+	if (ImGui::Button("Apply"))
+	{
+		draft.enabled = true;
+		enemyAttackDelaySettings = draft;
+		dirty = false;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Revert"))
+	{
+		draft = enemyAttackDelaySettings;
+		dirty = false;
+	}
+	ImGui::SameLine();
+	ImGui::Text("Status: %s%s",
+		enemyAttackDelaySettings.enabled ? "Applied" : "Waiting for Apply",
+		dirty ? " | Unapplied changes" : "");
+	ImGui::TextWrapped("Delay applies to Attack 1-3 and each Combo hit. Offbeat attacks are excluded. "
+		"The maximum is 60 frames (1 second).");
+	ImGui::TextWrapped("Applied changes take effect on the next attack or combo hit.");
+	ImGui::End();
+}
+
+void GameFramework::DrawCombatSettingsEditor()
+{
+	if (!showCombatSettingsEditor)
+		return;
+
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	const ImVec2 size(620.0f, (std::min)(690.0f, displaySize.y - 32.0f));
+	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f),
+		ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+	if (!ImGui::Begin("Combat Mode Settings", &showCombatSettingsEditor))
+	{
+		ImGui::End();
+		return;
+	}
+
+	auto& settings = combatModeDraft;
+	ImGui::SeparatorText("Health and stamina");
+	if (ImGui::BeginTable("CombatVitals", 3, ImGuiTableFlags_SizingStretchProp))
+	{
+		ImGui::TableSetupColumn("Setting", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+		ImGui::TableSetupColumn("Drag", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.7f);
+		ImGui::TableHeadersRow();
+		DrawFloatEditorRow("Player max health", settings.playerMaxHealth,
+			10.0f, 100.0f, 5000.0f, "%.0f");
+		DrawFloatEditorRow("Player max stamina", settings.playerMaxStamina,
+			1.0f, 10.0f, 500.0f, "%.0f");
+		DrawFloatEditorRow("Enemy max health", settings.enemyMaxHealth,
+			10.0f, 100.0f, 10000.0f, "%.0f");
+		ImGui::EndTable();
+	}
+
+	ImGui::SeparatorText("Damage");
+	if (ImGui::BeginTable("CombatDamage", 3, ImGuiTableFlags_SizingStretchProp))
+	{
+		ImGui::TableSetupColumn("Setting", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+		ImGui::TableSetupColumn("Drag", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.7f);
+		ImGui::TableHeadersRow();
+		DrawFloatEditorRow("Player attack damage", settings.playerAttackDamage,
+			5.0f, 1.0f, 1000.0f, "%.0f");
+		DrawFloatEditorRow("Player fatal damage", settings.playerFatalDamage,
+			5.0f, 1.0f, 2000.0f, "%.0f");
+		DrawFloatEditorRow("Enemy attack damage", settings.enemyAttackDamage,
+			5.0f, 1.0f, 1000.0f, "%.0f");
+		DrawFloatEditorRow("Shield reduction", settings.shieldDamageReductionPercent,
+			1.0f, 0.0f, 100.0f, "%.0f%%");
+		ImGui::EndTable();
+	}
+
+	ImGui::SeparatorText("Stamina costs");
+	if (ImGui::BeginTable("CombatStamina", 3, ImGuiTableFlags_SizingStretchProp))
+	{
+		ImGui::TableSetupColumn("Setting", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+		ImGui::TableSetupColumn("Drag", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.7f);
+		ImGui::TableHeadersRow();
+		DrawFloatEditorRow("Attack cost", settings.attackStaminaCost,
+			1.0f, 0.0f, 100.0f, "%.0f");
+		DrawFloatEditorRow("Roll cost", settings.rollStaminaCost,
+			1.0f, 0.0f, 100.0f, "%.0f");
+		DrawFloatEditorRow("Parry cost", settings.parryStaminaCost,
+			1.0f, 0.0f, 100.0f, "%.0f");
+		DrawFloatEditorRow("Shield block cost", settings.shieldBlockStaminaCost,
+			1.0f, 0.0f, 100.0f, "%.0f");
+		DrawFloatEditorRow("Recovery per second", settings.staminaRecoveryPerSecond,
+			0.5f, 0.0f, 100.0f, "%.1f");
+		DrawFloatEditorRow("Recovery delay", settings.staminaRecoveryDelay,
+			0.05f, 0.0f, 5.0f, "%.2f");
+		ImGui::EndTable();
+	}
+
+	ImGui::SeparatorText("Combat timing");
+	if (ImGui::BeginTable("CombatTiming", 3, ImGuiTableFlags_SizingStretchProp))
+	{
+		ImGui::TableSetupColumn("Setting", ImGuiTableColumnFlags_WidthStretch, 1.6f);
+		ImGui::TableSetupColumn("Drag", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.7f);
+		ImGui::TableHeadersRow();
+		DrawFloatEditorRow("Enemy attack speed", settings.enemyAttackAnimationSpeed,
+			0.01f, 0.1f, 3.0f, "%.2f");
+		DrawFloatEditorRow("Parry frame offset", settings.parryJudgementFrameOffset,
+			0.001f, -0.1f, 0.2f, "%.3f");
+		DrawFloatEditorRow("Roll frame offset", settings.rollJudgementFrameOffset,
+			0.001f, -0.2f, 1.4f, "%.3f");
+		ImGui::EndTable();
+	}
+
+	ImGui::Separator();
+	if (ImGui::Button("Reset to defaults", ImVec2(150.0f, 34.0f)))
+		settings = CombatModeSettings{};
+	ImGui::SameLine();
+	bool dirty = !(settings == combatModeSettings);
+	if (ImGui::Button("Apply", ImVec2(100.0f, 34.0f)))
+	{
+		combatModeSettings = settings;
+		dirty = false;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Revert", ImVec2(100.0f, 34.0f)))
+	{
+		settings = combatModeSettings;
+		dirty = false;
+	}
+	ImGui::SameLine();
+	ImGui::TextUnformatted(dirty ? "Unapplied changes" : "Applied settings");
+	ImGui::TextWrapped("Start Combat Mode resets both characters and uses the currently applied pattern list.");
+	ImGui::End();
+}
+
+void GameFramework::DrawCombatHud()
+{
+	auto& players = WORLD.GetComponents<PlayerComponent>();
+	auto& stateMachines = WORLD.GetComponents<StateMachineComponent>();
+	if (players.empty() || stateMachines.size() < 2)
+		return;
+
+	const auto playerStats = WORLD.GetComponent<CombatStatsComponent>(players.front().GetOwner());
+	const auto enemyStats = WORLD.GetComponent<CombatStatsComponent>(stateMachines[1].GetOwner());
+	if (!playerStats || !enemyStats)
+		return;
+
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	auto* draw = ImGui::GetBackgroundDrawList();
+	if (combatOutcome != CombatOutcome::None)
+	{
+		draw->AddRectFilled(ImVec2(0.0f, 0.0f), displaySize, IM_COL32(0, 0, 0, 255));
+		const char* message = combatOutcome == CombatOutcome::Victory ? "VICTORY" : "DEFEAT";
+		DrawCenteredBoldText(draw, displaySize, message,
+			(std::min)(96.0f, displaySize.y * 0.14f),
+			combatOutcome == CombatOutcome::Victory
+				? IM_COL32(238, 205, 110, 255)
+				: IM_COL32(205, 48, 48, 255),
+			displaySize.y * 0.46f);
+		return;
+	}
+	auto drawBar = [draw](const ImVec2& min, float width, float height, float ratio,
+		ImU32 fillColor, const char* text)
+	{
+		const float clampedRatio = std::clamp(ratio, 0.0f, 1.0f);
+		const ImVec2 barMax(min.x + width, min.y + height);
+		draw->AddRectFilled(ImVec2(min.x - 2.0f, min.y - 2.0f),
+			ImVec2(barMax.x + 2.0f, barMax.y + 2.0f), IM_COL32(12, 12, 12, 220));
+		draw->AddRectFilled(min, barMax, IM_COL32(45, 45, 45, 220));
+		draw->AddRectFilled(min, ImVec2(min.x + width * clampedRatio, barMax.y), fillColor);
+		draw->AddRect(min, barMax, IM_COL32(190, 175, 145, 210));
+		if (text)
+			draw->AddText(ImVec2(min.x + 6.0f, min.y + 1.0f), IM_COL32(235, 235, 225, 255), text);
+	};
+
+	char playerHealth[64];
+	snprintf(playerHealth, sizeof(playerHealth), "HP %.0f / %.0f",
+		playerStats->GetHealth(), playerStats->GetMaxHealth());
+	char playerStamina[64];
+	snprintf(playerStamina, sizeof(playerStamina), "Stamina %.0f / %.0f",
+		playerStats->GetStamina(), playerStats->GetMaxStamina());
+	const float playerBarWidth = (std::min)(330.0f, displaySize.x * 0.30f);
+	drawBar(ImVec2(26.0f, 28.0f), playerBarWidth, 18.0f,
+		playerStats->GetHealthRatio(), IM_COL32(145, 32, 28, 255), playerHealth);
+	drawBar(ImVec2(26.0f, 52.0f), playerBarWidth, 14.0f,
+		playerStats->GetStaminaRatio(), IM_COL32(48, 125, 58, 255), playerStamina);
+
+	const float enemyBarWidth = (std::min)(900.0f, displaySize.x * 0.68f);
+	const float enemyX = (displaySize.x - enemyBarWidth) * 0.5f;
+	const float enemyY = displaySize.y - 68.0f;
+	draw->AddText(ImVec2(enemyX, enemyY - 22.0f), IM_COL32(235, 230, 215, 255), "Pattern Knight");
+	char enemyHealth[64];
+	snprintf(enemyHealth, sizeof(enemyHealth), "%.0f / %.0f",
+		enemyStats->GetHealth(), enemyStats->GetMaxHealth());
+	drawBar(ImVec2(enemyX, enemyY), enemyBarWidth, 18.0f,
+		enemyStats->GetHealthRatio(), IM_COL32(132, 18, 18, 255), enemyHealth);
+
+	if (combatCountdownRemaining > 0.0f)
+	{
+		draw->AddRectFilled(ImVec2(0.0f, 0.0f), displaySize, IM_COL32(0, 0, 0, 92));
+		char countdown[8];
+		snprintf(countdown, sizeof(countdown), "%d",
+			static_cast<int>(std::ceil(combatCountdownRemaining)));
+		DrawCenteredBoldText(draw, displaySize, countdown,
+			(std::min)(104.0f, displaySize.y * 0.16f), IM_COL32(245, 245, 240, 255),
+			displaySize.y * 0.45f);
+	}
+}
+
+void GameFramework::DrawCombatPauseMenu()
+{
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0.0f, 0.0f), displaySize,
+		IM_COL32(90, 90, 90, 135));
+	ImGui::SetNextWindowPos(ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f),
+		ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSize(ImVec2(380.0f, 230.0f), ImGuiCond_Always);
+	ImGui::Begin("Combat Pause", nullptr,
+		ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+	const float buttonHeight = 42.0f;
+	if (ImGui::Button("Resume", ImVec2(-1.0f, buttonHeight)))
+		SetCombatPaused(false);
+	if (ImGui::Button("Restart Fight", ImVec2(-1.0f, buttonHeight)))
+		restartCombatRequested = true;
+	if (ImGui::Button("Return to Practice", ImVec2(-1.0f, buttonHeight)))
+		exitCombatRequested = true;
+	ImGui::TextWrapped("Esc: resume   T: restart fight   End: quit game");
+	ImGui::End();
+}
+
+void GameFramework::ConfigureCombatStats()
+{
+	auto& players = WORLD.GetComponents<PlayerComponent>();
+	auto& stateMachines = WORLD.GetComponents<StateMachineComponent>();
+	if (players.empty() || stateMachines.size() < 2)
+		return;
+	if (auto stats = WORLD.GetComponent<CombatStatsComponent>(players.front().GetOwner()))
+		stats->ConfigurePlayer(combatModeSettings);
+	if (auto stats = WORLD.GetComponent<CombatStatsComponent>(stateMachines[1].GetOwner()))
+		stats->ConfigureEnemy(combatModeSettings);
+}
+
+void GameFramework::StartCombatMode()
+{
+	combatMode = true;
+	combatPaused = false;
+	combatOutcome = CombatOutcome::None;
+	combatOutcomeTime = 0.0f;
+	combatCountdownRemaining = CombatCountdownSeconds;
+	playerAttackHitRegistered = false;
+	enemyAttackHitRegistered = false;
+	fatalAttackTriggered = false;
+	bEnemyActive = false;
+	playerNoHit = false;
+	showPatternEditor = false;
+	showAttackDelayEditor = false;
+	showCombatSettingsEditor = false;
+	RestartGame();
+	ConfigureCombatStats();
+	SetDebugMenusVisible(false);
+	actionLock = true;
+}
+
+void GameFramework::RestartCombatMode()
+{
+	if (!combatMode)
+	{
+		StartCombatMode();
+		return;
+	}
+	combatPaused = false;
+	combatOutcome = CombatOutcome::None;
+	combatOutcomeTime = 0.0f;
+	combatCountdownRemaining = CombatCountdownSeconds;
+	playerAttackHitRegistered = false;
+	enemyAttackHitRegistered = false;
+	fatalAttackTriggered = false;
+	bEnemyActive = false;
+	RestartGame();
+	ConfigureCombatStats();
+	SetCombatPaused(false);
+}
+
+void GameFramework::ExitCombatMode()
+{
+	combatMode = false;
+	combatPaused = false;
+	combatOutcome = CombatOutcome::None;
+	combatOutcomeTime = 0.0f;
+	combatCountdownRemaining = 0.0f;
+	bEnemyActive = false;
+	for (auto& stats : WORLD.GetComponents<CombatStatsComponent>())
+		stats.Disable();
+	RestartGame();
+	SetDebugMenusVisible(true);
+}
+
+void GameFramework::SetCombatPaused(bool paused)
+{
+	if (!combatMode)
+		return;
+	combatPaused = paused;
+	actionLock = paused || combatCountdownRemaining > 0.0f
+		|| combatOutcome != CombatOutcome::None;
+	auto& input = InputManager::GetInstance();
+	input.Reset();
+	input.LockMouse(!paused);
+	if (paused)
+	{
+		while (ShowCursor(TRUE) < 0);
+	}
+	else
+	{
+		while (ShowCursor(FALSE) >= 0);
+		POINT center{ mClientWidth / 2, mClientHeight / 2 };
+		ClientToScreen(mhMainWnd, &center);
+		SetCursorPos(center.x, center.y);
+	}
+}
+
+void GameFramework::UpdateRealCombat(float dt)
+{
+	auto& players = WORLD.GetComponents<PlayerComponent>();
+	auto& stateMachines = WORLD.GetComponents<StateMachineComponent>();
+	if (players.empty() || stateMachines.size() < 2)
+		return;
+
+	auto playerState = WORLD.GetComponent<StateMachineComponent>(players.front().GetOwner());
+	auto& enemyState = stateMachines[1];
+	auto playerMesh = WORLD.GetComponent<MeshComponent>(players.front().GetOwner());
+	auto enemyMesh = WORLD.GetComponent<MeshComponent>(enemyState.GetOwner());
+	auto playerStats = WORLD.GetComponent<CombatStatsComponent>(players.front().GetOwner());
+	auto enemyStats = WORLD.GetComponent<CombatStatsComponent>(enemyState.GetOwner());
+	if (!playerState || !playerMesh || !enemyMesh || !playerStats || !enemyStats)
+		return;
+
+	XMVECTOR distanceVector = XMLoadFloat3(&enemyMesh->Translation) - XMLoadFloat3(&playerMesh->Translation);
+	float distance = 0.0f;
+	XMStoreFloat(&distance, XMVector3Length(distanceVector));
+
+	const bool playerAttacking = playerState->GetCurrentSatateType() == StateType::Attack;
+	if (!playerAttacking || enemyState.GetCurrentSatateType() != StateType::Parried)
+		fatalAttackTriggered = false;
+	if (playerAttacking && enemyState.GetCurrentSatateType() == StateType::Parried
+		&& playerState->IsAnimationStarting() && !fatalAttackTriggered)
+	{
+		fatalAttackTriggered = true;
+		enemyState.CheckDistAndSetToFaceOpponent(players.front().GetOwner(), FLT_MAX);
+		GameEvent event;
+		event.eventType = GameEventType::ActiveFatalAttack;
+		playerState->HandleGameEvent(event);
+	}
+
+	const bool playerEffective = playerAttacking && playerState->IsInValidFrame();
+	if (!playerEffective)
+		playerAttackHitRegistered = false;
+	if (distance < 3.0f && playerEffective && !playerAttackHitRegistered)
+	{
+		playerAttackHitRegistered = true;
+		float damage = combatModeSettings.playerAttackDamage;
+		if (const auto animation = WORLD.GetComponent<AnimationComponent>(players.front().GetOwner()))
+		{
+			const auto& controller = *animation->mSkinnedModelAnimationController;
+			const auto type = controller.animationPlayInfos[controller.curAnimationPlayIndex].animationType;
+			if (type == AnimationType::OneHandBaseFatalAttack
+				|| type == AnimationType::TwoHandBaseFatalAttack)
+				damage = combatModeSettings.playerFatalDamage;
+		}
+		enemyStats->TakeDamage(damage);
+		GameEvent event;
+		event.eventType = GameEventType::Hit;
+		event.strength = damage == combatModeSettings.playerFatalDamage ? FATATL_HIT_STRENGTH : 0.1f;
+		event.dir = { 0, 0, playerMesh->Translation.z > enemyMesh->Translation.z ? -1 : 1 };
+		enemyState.HandleGameEvent(event);
+		if (enemyStats->IsDead())
+		{
+			combatOutcome = CombatOutcome::Victory;
+			combatOutcomeTime = 0.0f;
+			bEnemyActive = false;
+			actionLock = true;
+		}
+	}
+
+	const bool enemyEffective = enemyState.GetCurrentSatateType() == StateType::Attack
+		&& enemyState.IsInValidFrame();
+	if (!enemyEffective)
+		enemyAttackHitRegistered = false;
+	if (distance < 3.0f && enemyEffective && !enemyAttackHitRegistered)
+	{
+		enemyAttackHitRegistered = true;
+		const bool parried = playerState->GetCurrentSatateType() == StateType::Parry
+			&& playerState->IsInValidFrame(combatModeSettings.parryJudgementFrameOffset);
+		if (parried)
+		{
+			GameEvent event;
+			event.eventType = GameEventType::Parried;
+			enemyState.HandleGameEvent(event);
+			AudioManager::GetInstance().PlaySfx(SoundId::SwordClash);
+			auto parryPosition = Vector3::Add(enemyMesh->Translation, playerMesh->Translation);
+			parryPosition = Vector3::ScalarProduct(parryPosition, 0.5f, false);
+			parryPosition.y = playerMesh->Translation.y + 3.5f;
+			mParticleManager.CreateParticle("effect_parry_flash", parryPosition,
+				XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f));
+			mParticleManager.CreateParticle("effect_parry_sparks", parryPosition,
+				XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 0.0f));
+		}
+		else
+		{
+			const bool rolledThrough = playerState->GetCurrentSatateType() == StateType::Roll
+				&& playerState->IsInValidFrame(combatModeSettings.rollJudgementFrameOffset);
+			if (!rolledThrough)
+			{
+				float receivedDamage = combatModeSettings.enemyAttackDamage;
+				const auto equipment = WORLD.GetComponent<EquipmentOwnerComponent>(players.front().GetOwner());
+				const bool holdingOneHandShield = playerState->IsGuarding()
+					&& equipment
+					&& equipment->equipments[(UINT)EquipmentType::Shield].has_value()
+					&& !equipment->equipments[(UINT)EquipmentType::TwoHandSword].has_value();
+				if (holdingOneHandShield)
+				{
+					playerStats->ConsumeGuardStamina();
+					receivedDamage = CalculateGuardedDamage(receivedDamage,
+						combatModeSettings.shieldDamageReductionPercent);
+				}
+				playerStats->TakeDamage(receivedDamage);
+				GameEvent event;
+				event.eventType = GameEventType::Hit;
+				event.strength = holdingOneHandShield ? 0.1f : 0.2f;
+				event.dir = { 0, 0, 1 };
+				playerState->HandleGameEvent(event);
+				if (playerStats->IsDead())
+				{
+					combatOutcome = CombatOutcome::Defeat;
+					combatOutcomeTime = 0.0f;
+					bEnemyActive = false;
+					actionLock = true;
+				}
+			}
+		}
+	}
 }
 
 void GameFramework::LoadTextures()
@@ -3378,7 +4119,7 @@ void GameFramework::BuildRenderItems()
 	WORLD.AttachComponent(hPlayerObj, PlayerComponent(hPlayerObj));
 
 	XMFLOAT3 playerOffset = PlayerSpawnPosition;
-	XMFLOAT3 playerRot = CharacterSpawnRotation;
+	XMFLOAT3 playerRot = PlayerSpawnRotation;
 	BuildHumanoidItem<CharacterBody>(
 		hPlayerObj,
 		skinnedCBIndexCounter,
@@ -3394,11 +4135,12 @@ void GameFramework::BuildRenderItems()
 	);
 
 	InitializeCharacterStateMachine(hPlayerObj, true);
+	WORLD.AttachComponent(hPlayerObj, CombatStatsComponent(hPlayerObj));
 
 	// Build Enemy
 	auto hEnemyObj = WORLD.AddObject();
 	XMFLOAT3 ememyOffset = EnemySpawnPosition;
-	XMFLOAT3 ememyRot = CharacterSpawnRotation;
+	XMFLOAT3 ememyRot = EnemySpawnRotation;
 	BuildHumanoidItem(
 		hEnemyObj,
 		skinnedCBIndexCounter,
@@ -3413,6 +4155,7 @@ void GameFramework::BuildRenderItems()
 		false
 	);
 	InitializeCharacterStateMachine(hEnemyObj, false);
+	WORLD.AttachComponent(hEnemyObj, CombatStatsComponent(hEnemyObj));
 
 
 }
@@ -3433,7 +4176,8 @@ void GameFramework::InitializeCharacterStateMachine(Handle<GameObject> owner, bo
 	else
 	{
 		states[StateType::Idle] = std::make_unique<EnemyIdleState>();
-		states[StateType::Attack] = std::make_unique<EnemyAttackState>(enemyAttackAnimationSpeed);
+		states[StateType::Attack] = std::make_unique<EnemyAttackState>(
+			combatModeSettings.enemyAttackAnimationSpeed, enemyAttackDelaySettings);
 		states[StateType::Hit] = std::make_unique<EnemyHitState>();
 		states[StateType::Parried] = std::make_unique<EnemyParriedState>();
 		states[StateType::Walk] = std::make_unique<EnemyWalkState>();
@@ -3473,7 +4217,7 @@ void GameFramework::RestartGame()
 		}
 		auto mesh = WORLD.GetComponent<MeshComponent>(owner);
 		mesh->Translation = spawn;
-		mesh->Rotation = CharacterSpawnRotation;
+		mesh->Rotation = isPlayer ? PlayerSpawnRotation : EnemySpawnRotation;
 		mesh->NumFramesDirty = gNumFrameResources;
 		if (isPlayer)
 			for (auto& drawItem : mesh->drawItems)

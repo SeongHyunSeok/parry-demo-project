@@ -350,6 +350,7 @@ AnimationController::~AnimationController()
 void AnimationController::SetAnimation(AnimationType type)
 {
 	if (animationPlayInfos[curAnimationPlayIndex].animationType != type) {
+		CancelEffectiveFrameSlowdown();
 		if (blending) {
 			if (blendingWeight < 0.5f) {
 				curAnimationPlayIndex = (curAnimationPlayIndex + 1) % gTotalAnimationPlayInfoCount;
@@ -375,6 +376,7 @@ void AnimationController::SetAnimation(AnimationType type, float speed)
 
 void AnimationController::RestartAnimation(AnimationType type, float speed)
 {
+	CancelEffectiveFrameSlowdown();
 	if (animationPlayInfos[curAnimationPlayIndex].animationType != type)
 	{
 		SetAnimation(type, speed);
@@ -392,6 +394,51 @@ void AnimationController::RestartAnimation(AnimationType type, float speed)
 	blending = false;
 	blendingWeight = 0.0f;
 	SetTrackSpeed(type, speed);
+}
+
+void AnimationController::ArmEffectiveFrameSlowdown(float addedDelaySeconds, float slowdownLeadSeconds)
+{
+	CancelEffectiveFrameSlowdown();
+	if (addedDelaySeconds <= 0.0f || !animationSets || !animationSets->animationEffectiveTimeInfos)
+		return;
+
+	const auto& playInfo = animationPlayInfos[curAnimationPlayIndex];
+	const auto timing = animationSets->animationEffectiveTimeInfos->find(playInfo.animationType);
+	if (timing == animationSets->animationEffectiveTimeInfos->end())
+		return;
+
+	const auto track = animationTracks.find(playInfo.animationType);
+	if (track == animationTracks.end())
+		return;
+
+	if (track->second.speed <= 0.0f || playInfo.timePosition >= timing->second.effectiveStartTimePos)
+		return;
+
+	const float lead = (std::max)(slowdownLeadSeconds, 0.0f);
+	const float slowdownStart = (std::max)(
+		(std::max)(track->second.startPosition, timing->second.effectiveStartTimePos - lead),
+		playInfo.timePosition);
+	const float slowdownDistance = timing->second.effectiveStartTimePos - slowdownStart;
+	if (slowdownDistance <= 0.0f)
+		return;
+
+	const float normalTraversalSeconds = slowdownDistance / track->second.speed;
+	effectiveFrameSlowdownArmed = true;
+	effectiveFrameSlowdownAnimation = playInfo.animationType;
+	effectiveFrameSlowdownStartPosition = slowdownStart;
+	effectiveFrameSlowdownEndPosition = timing->second.effectiveStartTimePos;
+	effectiveFrameSlowdownRateScale = normalTraversalSeconds
+		/ (normalTraversalSeconds + addedDelaySeconds);
+}
+
+void AnimationController::CancelEffectiveFrameSlowdown()
+{
+	effectiveFrameSlowdownArmed = false;
+	effectiveFrameSlowdownActive = false;
+	effectiveFrameSlowdownAnimation = AnimationType::Idle;
+	effectiveFrameSlowdownStartPosition = 0.0f;
+	effectiveFrameSlowdownEndPosition = 0.0f;
+	effectiveFrameSlowdownRateScale = 1.0f;
 }
 
 void AnimationController::SetTrackSpeed(AnimationType type, float speed)
@@ -412,7 +459,68 @@ void AnimationController::SetTrackAnimationPlayType(AnimationType type, Animatio
 
 void AnimationController::AdvanceTime(float elapsedTime)
 {
-	UpdateTimePosition(elapsedTime);
+	float remainingTime = (std::max)(elapsedTime, 0.0f);
+	constexpr float timeEpsilon = 0.000001f;
+
+	while (remainingTime > timeEpsilon)
+	{
+		auto& playInfo = animationPlayInfos[curAnimationPlayIndex];
+		if ((effectiveFrameSlowdownArmed || effectiveFrameSlowdownActive)
+			&& playInfo.animationType != effectiveFrameSlowdownAnimation)
+		{
+			CancelEffectiveFrameSlowdown();
+		}
+
+		auto& track = animationTracks.at(playInfo.animationType);
+		if (effectiveFrameSlowdownArmed)
+		{
+			const float distanceToSlowdown = effectiveFrameSlowdownStartPosition - playInfo.timePosition;
+			if (distanceToSlowdown > timeEpsilon && track.speed > 0.0f)
+			{
+				const float timeToSlowdown = distanceToSlowdown / track.speed;
+				const float step = (std::min)(remainingTime, timeToSlowdown);
+				UpdateTimePosition(step);
+				remainingTime -= step;
+				if (step + timeEpsilon < timeToSlowdown)
+					break;
+			}
+
+			effectiveFrameSlowdownArmed = false;
+			effectiveFrameSlowdownActive = true;
+			playInfo.timePosition = effectiveFrameSlowdownStartPosition;
+			continue;
+		}
+
+		if (effectiveFrameSlowdownActive)
+		{
+			const float slowedSpeed = track.speed * effectiveFrameSlowdownRateScale;
+			const float distanceToEffectiveFrame =
+				effectiveFrameSlowdownEndPosition - playInfo.timePosition;
+			if (distanceToEffectiveFrame <= timeEpsilon || slowedSpeed <= 0.0f)
+			{
+				effectiveFrameSlowdownActive = false;
+				playInfo.timePosition = effectiveFrameSlowdownEndPosition;
+				continue;
+			}
+
+			const float timeToEffectiveFrame = distanceToEffectiveFrame / slowedSpeed;
+			const float step = (std::min)(remainingTime, timeToEffectiveFrame);
+			const float originalSpeed = track.speed;
+			track.speed = slowedSpeed;
+			UpdateTimePosition(step);
+			track.speed = originalSpeed;
+			remainingTime -= step;
+			if (step + timeEpsilon < timeToEffectiveFrame)
+				break;
+
+			effectiveFrameSlowdownActive = false;
+			playInfo.timePosition = effectiveFrameSlowdownEndPosition;
+			continue;
+		}
+
+		UpdateTimePosition(remainingTime);
+		remainingTime = 0.0f;
+	}
 	
 	AnimationPlayInfo& curPlayInfo = animationPlayInfos[curAnimationPlayIndex];
 

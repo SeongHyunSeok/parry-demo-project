@@ -5,6 +5,7 @@
 #include "../world.h"
 #include "../../Model/Animation.h"
 #include "../EnemyPatternSequence.h"
+#include "CombatStats.h"
 
 #include <chrono>
 
@@ -59,9 +60,13 @@ public:
 	void SetOwnerAnimation(AnimationType animationType);
 	void SetOwnerAnimation(AnimationType animationType, float speed);
 	void RestartOwnerAnimation(AnimationType animationType, float speed);
+	void ArmOwnerEffectiveFrameSlowdown(float addedDelaySeconds, float slowdownLeadSeconds);
+	void CancelOwnerEffectiveFrameSlowdown();
+	bool TryConsumeOwnerStamina(CombatAction action);
 	bool CheckAnimationEnd();
 	bool IsInValidFrame(float offset = 0.0f);
 	bool IsAnimationStarting();
+	bool IsGuarding() const;
 	bool CheckDistAndSetToFaceOpponent(Handle<GameObject> opponentHandle, float distThreshold, float* distance=nullptr);
 	StateType GetCurrentSatateType();
 private:
@@ -85,6 +90,7 @@ public:
 		const PlayerInupt& playerInput
 	) = 0;
 	virtual void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) = 0;
+	virtual bool IsGuarding() const { return false; }
 
 	StateProperty createHitStatePropertyFromGameEvent(const GameEvent& event, bool shield){
 		StateProperty sp;
@@ -104,6 +110,7 @@ public:
 	void Update(StateMachineComponent* pStateMachine) override;
 	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
+	bool IsGuarding() const override { return shield; }
 private:
 	bool shieldInputIn = false;
 	bool shield = false;
@@ -120,6 +127,7 @@ public:
 	void Update(StateMachineComponent* pStateMachine) override;
 	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
+	bool IsGuarding() const override { return shield; }
 private:
 	bool walkInputIn = false;
 	bool shieldInputIn = false;
@@ -264,22 +272,27 @@ private:
 class EnemyAttackState : public PlayerAttackState
 {
 public:
-	explicit EnemyAttackState(const float& attackAnimationSpeed)
-		: attackAnimationSpeed(attackAnimationSpeed)
+	EnemyAttackState(const float& attackAnimationSpeed,
+		const EnemyAttackDelaySettings& attackDelaySettings)
+		: attackAnimationSpeed(attackAnimationSpeed),
+		attackDelaySettings(attackDelaySettings)
 	{}
 	void Enter(StateMachineComponent* pStateMachine, StateProperty property) override;
+	void Leave(StateMachineComponent* pStateMachine) override;
 	void Update(StateMachineComponent* pStateMachine) override;
 	void HandleInput(StateMachineComponent* pStateMachine, const PlayerInupt& playerInput) override;
 	void HandleEvent(StateMachineComponent* pStateMachine, GameEvent& event) override;
 
 private:
 	bool IsEnemyAttackPattern(EnemyPattern pattern) const;
+	void ArmCurrentAttackSlowdown(StateMachineComponent* pStateMachine) const;
 
 	AnimationType GetEnemyAttackAnimation(EnemyPattern pattern) const;
 
 private:
 	EnemyPattern currentPattern = EnemyPattern::None;
 	const float& attackAnimationSpeed;
+	const EnemyAttackDelaySettings& attackDelaySettings;
 
 	bool bActive = true;
 };
