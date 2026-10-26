@@ -83,6 +83,6 @@ git clone https://github.com/SeongHyunSeok/parry-demo-project.git
 
 ## 사용 범위
 
-- Jolt Physics는 충돌 계산, Dear ImGui는 개발 UI, miniaudio는 오디오 출력에 사용했습니다.
+- Jolt Physics는 충돌 계산, Dear ImGui는 UI, miniaudio는 오디오 출력에 사용했습니다.
 - DirectX 12 렌더링 연결, ECS 스타일 저장소, 전투 상태 머신, 패링 판정, 애니메이션·물리 연동, 패턴·Delay 편집 로직과 파티클 운용은 프로젝트에서 구현했습니다.
 - 패턴과 Delay 설정은 현재 실행 세션 동안만 유지됩니다.
