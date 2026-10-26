@@ -14,7 +14,7 @@
 
 ### 패링과 처형
 
-<img width="300" height="506" alt="스크린샷 2026-10-26 142539" src="https://github.com/user-attachments/assets/713bab1b-1622-42fe-88dd-87a5c023ba78" /> <img width="300" height="506" alt="스크린샷 2026-10-26 142607" src="https://github.com/user-attachments/assets/c7d891ef-c1aa-4dc4-a70a-051e202fc387" /> <img width="300" height="506" alt="스크린샷 2026-10-26 142701" src="https://github.com/user-attachments/assets/e5d236d0-c4c5-4b9d-a676-146a0b54e991" />
+<img width="270" height="456" alt="스크린샷 2026-10-26 142539" src="https://github.com/user-attachments/assets/713bab1b-1622-42fe-88dd-87a5c023ba78" /> <img width="270" height="456" alt="스크린샷 2026-10-26 142607" src="https://github.com/user-attachments/assets/c7d891ef-c1aa-4dc4-a70a-051e202fc387" /> <img width="270" height="456" alt="스크린샷 2026-10-26 142701" src="https://github.com/user-attachments/assets/e5d236d0-c4c5-4b9d-a676-146a0b54e991" />
 
 
 
