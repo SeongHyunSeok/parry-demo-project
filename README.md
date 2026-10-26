@@ -45,7 +45,7 @@ Attack Delay 편집을 통해 적의 공격별로 공격 직전에 딜레이를 
 | Graphics | DirectX 12, HLSL 5.1 |
 | Rendering | Shadow Mapping, SSAO, Normal Mapping, GPU Skinning, Billboard Particle |
 | Physics | Jolt Physics, Root Motion 연동 |
-| Architecture | ECS 스타일 컴포넌트, Handle·DenseTable, FSM, Event Dispatch |
+| Architecture | ECS(Entity Component System), Handle·DenseTable, FSM, Event Dispatch |
 | Tools | Dear ImGui, miniaudio |
 
 ## 구조
