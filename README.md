@@ -14,6 +14,11 @@
 
 ### 패링과 처형
 
+<img width="611" height="1011" alt="스크린샷 2026-10-26 142539" src="https://github.com/user-attachments/assets/713bab1b-1622-42fe-88dd-87a5c023ba78" /><img width="599" height="1010" alt="스크린샷 2026-10-26 142701" src="https://github.com/user-attachments/assets/e5d236d0-c4c5-4b9d-a676-146a0b54e991" />
+<img width="603" height="1011" alt="스크린샷 2026-10-26 142607" src="https://github.com/user-attachments/assets/c7d891ef-c1aa-4dc4-a70a-051e202fc387" />
+
+
+
 패링은 플레이어와 적의 거리, 적 공격 애니메이션의 타격 구간, 플레이어 패링 유효 구간을 함께 검사합니다. 성공하면 적이 경직되고 검 충돌음과 섬광·스파크가 재생되며, 반격과 처형 기회가 주어집니다.
 
 ### 기본 설정과 Combat 모드 설정
