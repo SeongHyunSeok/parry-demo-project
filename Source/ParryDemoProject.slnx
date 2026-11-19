@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="ParryDemoProject.vcxproj" Id="3e7f397f-acb7-43df-a66f-0d6512d526c4" />
+</Solution>
